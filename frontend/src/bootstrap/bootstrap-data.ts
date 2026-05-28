@@ -31,12 +31,14 @@ const defaultPayload: BootstrapPayload = {
   initialData: {
     agents: [],
     models: {},
+    debates: [],
   },
 };
 
 const defaultHomeData: HomeBootstrapData = {
   agents: [],
   models: {},
+  debates: [],
 };
 
 const defaultDebatesData: DebatesBootstrapData = {
@@ -205,6 +207,7 @@ function parseHomeData(value: unknown): HomeBootstrapData {
   return {
     agents: isStringArray(value.agents) ? value.agents : [],
     models: isModelCatalog(value.models) ? value.models : {},
+    debates: Array.isArray(value.debates) ? value.debates.filter(isDebateListItem) : [],
   };
 }
 

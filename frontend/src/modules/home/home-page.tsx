@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DebateSetupData, ModelCatalog } from "../../lib/types/bootstrap";
+import type { DebateListItem, DebateSetupData, ModelCatalog } from "../../lib/types/bootstrap";
 import { ChatConfigPanel } from "./chat/chat-config-panel";
 import { ChatInput } from "./chat/chat-input";
 import { ChatTranscript } from "./chat/chat-transcript";
@@ -30,6 +30,7 @@ type CompactDebateSidebar = DebateSetupData;
 type HomePageProps = {
     agents: string[];
     models: ModelCatalog;
+    debates?: DebateListItem[];
     initialMode?: HomeMode;
     lockMode?: HomeMode;
     initialDebateSession?: InitialDebateSessionState | null;
@@ -68,9 +69,16 @@ function trimPreview(value: string, maxLength = 220) {
     return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trimEnd()}...` : normalized;
 }
 
+function formatDebateTimestamp(timestamp: string) {
+    const date = timestamp.slice(0, 10);
+    const time = timestamp.length > 15 ? timestamp.slice(11, 16) : "";
+    return `${date} ${time}`.trim();
+}
+
 export function HomePage({
     agents,
     models,
+    debates = [],
     initialMode,
     lockMode,
     initialDebateSession = null,
@@ -110,6 +118,7 @@ export function HomePage({
 
     const showChatThinking = THINKING_MODELS.has(chatSettings.model);
     const isCompactDebateSidebar = mode === "debate" && debateSidebarVariant === "compact-readonly";
+    const isDebateLanding = mode === "debate" && !lockMode && initialDebateSession === null && debateSidebarVariant === "default";
 
     useEffect(() => {
         saveChatSettings(chatSettings);
@@ -534,7 +543,7 @@ export function HomePage({
                     <small className={styles.logoSmall}>Eksperyment epistemiczny</small>
                 </div>
 
-                {isCompactDebateSidebar ? null : (
+                {isCompactDebateSidebar || isDebateLanding ? null : (
                     <a className={styles.archiveLink} href={buildAppPath("/debates")} target="_blank" rel="noreferrer">
                         🗂 Archiwum debat
                     </a>
@@ -543,6 +552,19 @@ export function HomePage({
                 {mode === "chat" ? (
                     <div className={styles.sidebarSection}>
                         <ChatConfigPanel agents={agents} models={models} settings={chatSettings} showThinking={showChatThinking} onChange={handleChatSettingsChange} onNewChat={resetWorkspace} />
+                    </div>
+                ) : isDebateLanding ? (
+                    <div className={styles.compactSidebar}>
+                        <a className={styles.primaryNavLink} href={buildAppPath("/newDebate")}>
+                            + Nowa debata
+                        </a>
+                        <section className={styles.compactCard}>
+                            <div className={styles.compactHeading}>Debaty</div>
+                            <div className={styles.compactTextBlock}>
+                                <span>Nawigacja</span>
+                                <p>Wybierz zapis z listy po prawej, żeby wejść w podgląd albo kontynuację debaty.</p>
+                            </div>
+                        </section>
                     </div>
                 ) : (
                     <div className={styles.sidebarSectionCompact}>
@@ -647,7 +669,7 @@ export function HomePage({
                     </div>
                 )}
 
-                {isCompactDebateSidebar ? null : (
+                {isCompactDebateSidebar || isDebateLanding ? null : (
                     <button type="button" className={styles.resetButton} onClick={resetStoredModelSettings}>
                         Reset ustawień modeli
                     </button>
@@ -655,7 +677,7 @@ export function HomePage({
             </aside>
 
             <main className={styles.main}>
-                {mode === "debate" ? (
+                {mode === "debate" && !isDebateLanding ? (
                     <div className={styles.progressRow}>
                         <div className={styles.progressTrack}>
                             <div className={styles.progressFill} style={{ width: `${progress.fillPercent}%` }} />
@@ -673,9 +695,46 @@ export function HomePage({
 
                 <div className={styles.contentGrid}>
                     <section className={styles.transcriptPane}>
-                        <div ref={chatMessagesRef} className={styles.messages}>
-                            {mode === "chat" ? <ChatTranscript messages={chatTranscript} busy={chatBusy} /> : <DebateTranscript entries={debateTranscript} />}
-                        </div>
+                        {isDebateLanding ? (
+                            <div className={`${styles.messages} ${styles.debateListShell}`}>
+                                <div className={styles.debateListHeader}>
+                                    <h1 className={styles.debateListTitle}>Moje debaty</h1>
+                                    <p className={styles.debateListSubtitle}>Lista zapisanych debat. Każdy wpis możesz otworzyć jako podgląd albo wejść do kontynuacji.</p>
+                                </div>
+
+                                {debates.length === 0 ? (
+                                    <div className={styles.debateEmptyState}>Brak zapisanych debat. Użyj `+ Nowa debata`, żeby uruchomić pierwszą.</div>
+                                ) : (
+                                    <div className={styles.debateListCompact}>
+                                        {debates.map((debate) => (
+                                            <article key={debate.id} className={styles.debateListItem}>
+                                                <div className={styles.debateListMetaRow}>
+                                                    <strong>{debate.agent1} vs {debate.agent2}</strong>
+                                                    <span>{formatDebateTimestamp(debate.timestamp)}</span>
+                                                </div>
+                                                <div className={styles.debateListTopic}>{debate.topic || "Bez tematu"}</div>
+                                                <div className={styles.debateListFooter}>
+                                                    <span>{debate.turns} wymian</span>
+                                                    <span>{debate.model1}{debate.model2 !== debate.model1 ? ` / ${debate.model2}` : ""}</span>
+                                                </div>
+                                                <div className={styles.debateListActions}>
+                                                    <a className={styles.debateListLink} href={buildAppPath(`/debate/${debate.id}`)}>
+                                                        Podgląd
+                                                    </a>
+                                                    <a className={styles.debateListLink} href={buildAppPath(`/debate/${debate.id}`)}>
+                                                        Kontynuacja
+                                                    </a>
+                                                </div>
+                                            </article>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div ref={chatMessagesRef} className={styles.messages}>
+                                {mode === "chat" ? <ChatTranscript messages={chatTranscript} busy={chatBusy} /> : <DebateTranscript entries={debateTranscript} />}
+                            </div>
+                        )}
 
                         {mode === "chat" ? (
                             <ChatInput
@@ -692,7 +751,7 @@ export function HomePage({
                         ) : null}
                     </section>
 
-                    <aside className={`${styles.notesPane} ${mode === "debate" ? styles.notesPaneActive : ""}`}>
+                    <aside className={`${styles.notesPane} ${mode === "debate" && !isDebateLanding ? styles.notesPaneActive : ""}`}>
                         <LiveNotesPanel subtitle={notesSubtitle} liveNotes={liveNotes} lastTurn={lastLiveNotesTurn} />
                     </aside>
                 </div>

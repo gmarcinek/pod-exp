@@ -249,6 +249,7 @@ def _build_home_bootstrap_payload(*, app_base_path: str = "") -> dict:
         initial_data={
             "agents": _list_agents(),
             "models": MODELS,
+            "debates": _load_debates_index(),
         },
     )
 

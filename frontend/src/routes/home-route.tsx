@@ -6,5 +6,5 @@ type HomeRouteProps = {
 };
 
 export function HomeRoute({ data }: HomeRouteProps) {
-  return <HomePage agents={data.agents} models={data.models} />;
+  return <HomePage agents={data.agents} models={data.models} debates={data.debates} />;
 }

@@ -5,6 +5,7 @@ export type ModelCatalog = Record<string, string[]>;
 export type HomeBootstrapData = {
 	agents: string[];
 	models: ModelCatalog;
+	debates: DebateListItem[];
 };
 
 export type DebateListItem = {

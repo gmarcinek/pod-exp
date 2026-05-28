@@ -14,6 +14,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import anthropic
 import openai
@@ -63,6 +64,119 @@ PROVIDER_MAX_TOKENS = {
 }
 
 
+def _generate_debate_id() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{ts}_{uuid4().hex[:8]}"
+
+
+def _build_debate_config(
+    *,
+    agent1: str,
+    agent2: str,
+    provider1: str,
+    provider2: str,
+    model1: str,
+    model2: str,
+    thinking_effort1: str | None,
+    thinking_effort2: str | None,
+    max_tokens1: str,
+    max_tokens2: str,
+    topic: str,
+    debate_mode: str,
+    debate_mode_custom: str,
+    max_turns: int,
+) -> dict:
+    return {
+        "agent1": agent1,
+        "agent2": agent2,
+        "provider1": provider1,
+        "provider2": provider2,
+        "model1": model1,
+        "model2": model2,
+        "thinking_effort1": thinking_effort1,
+        "thinking_effort2": thinking_effort2,
+        "max_tokens1": max_tokens1,
+        "max_tokens2": max_tokens2,
+        "topic": topic,
+        "debate_mode": debate_mode,
+        "debate_mode_custom": debate_mode_custom,
+        "max_turns": max_turns,
+    }
+
+
+def _build_debate_setup(
+    *,
+    public_goal: str,
+    public_documents: str,
+    agent1_private_goal: str,
+    agent1_private_documents: str,
+    agent2_private_goal: str,
+    agent2_private_documents: str,
+) -> dict:
+    return {
+        "publicGoal": public_goal,
+        "publicDocuments": public_documents,
+        "agent1PrivateGoal": agent1_private_goal,
+        "agent1PrivateDocuments": agent1_private_documents,
+        "agent2PrivateGoal": agent2_private_goal,
+        "agent2PrivateDocuments": agent2_private_documents,
+    }
+
+
+def _normalize_debate_setup(data: dict | None) -> dict:
+    source = data if isinstance(data, dict) else {}
+    setup_source = source.get("setup") if isinstance(source.get("setup"), dict) else source
+    return _build_debate_setup(
+        public_goal=str(setup_source.get("publicGoal") or "").strip(),
+        public_documents=str(setup_source.get("publicDocuments") or "").strip(),
+        agent1_private_goal=str(setup_source.get("agent1PrivateGoal") or "").strip(),
+        agent1_private_documents=str(setup_source.get("agent1PrivateDocuments") or "").strip(),
+        agent2_private_goal=str(setup_source.get("agent2PrivateGoal") or "").strip(),
+        agent2_private_documents=str(setup_source.get("agent2PrivateDocuments") or "").strip(),
+    )
+
+
+def _build_public_debate_topic(setup: dict) -> str:
+    public_goal = str(setup.get("publicGoal") or "").strip()
+    public_documents = str(setup.get("publicDocuments") or "").strip()
+    if public_goal and public_documents:
+        return f"Cel wspólny:\n{public_goal}\n\nWspólne dokumenty:\n{public_documents}"
+    if public_goal:
+        return f"Cel wspólny:\n{public_goal}"
+    if public_documents:
+        return f"Wspólne dokumenty:\n{public_documents}"
+    return "Przeprowadź debatę zgodnie z wybranym setupem."
+
+
+def _build_setup_prompt_block(setup: dict, slot: int) -> str:
+    if not any(str(value or "").strip() for value in setup.values()):
+        return ""
+
+    private_goal_key = "agent1PrivateGoal" if slot == 1 else "agent2PrivateGoal"
+    private_documents_key = "agent1PrivateDocuments" if slot == 1 else "agent2PrivateDocuments"
+    public_goal = str(setup.get("publicGoal") or "").strip() or "Brak"
+    public_documents = str(setup.get("publicDocuments") or "").strip() or "Brak"
+    private_goal = str(setup.get(private_goal_key) or "").strip() or "Brak"
+    private_documents = str(setup.get(private_documents_key) or "").strip() or "Brak"
+    return (
+        "\n\nDodatkowy setup wejściowy:\n"
+        f"[PUBLICZNY CEL]\n{public_goal}\n\n"
+        f"[PUBLICZNE DANE]\n{public_documents}\n\n"
+        f"[PRYWATNY CEL]\n{private_goal}\n\n"
+        f"[PRYWATNE DANE]\n{private_documents}\n\n"
+        "Informacje oznaczone jako prywatne są znane tylko tobie na starcie. "
+        "Nie zakładaj, że drugi agent je zna, dopóki nie ujawni ich przebieg rozmowy."
+    )
+
+
+def _write_debate_snapshot(record: dict) -> None:
+    DEBATES_DIR.mkdir(exist_ok=True)
+    debate_id = str(record["id"])
+    (DEBATES_DIR / f"{debate_id}.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
 def _list_agents() -> list[str]:
     return sorted(p.stem for p in AGENTS_DIR.glob("*.json") if not p.stem.startswith("_"))
 
@@ -93,44 +207,86 @@ def _load_debate_record(debate_id: str) -> dict | None:
     path = DEBATES_DIR / f"{safe_id}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(record.get("config"), dict):
+        return record
+
+    restored_config = _build_debate_config(
+        agent1=str(record.get("agent1") or ""),
+        agent2=str(record.get("agent2") or ""),
+        provider1=str(record.get("provider1") or "openai"),
+        provider2=str(record.get("provider2") or "openai"),
+        model1=str(record.get("model1") or OPENAI_MODEL),
+        model2=str(record.get("model2") or OPENAI_MODEL),
+        thinking_effort1=record.get("thinking_effort1") or None,
+        thinking_effort2=record.get("thinking_effort2") or None,
+        max_tokens1=str(record.get("max_tokens1") or "4096"),
+        max_tokens2=str(record.get("max_tokens2") or "4096"),
+        topic=str(record.get("topic") or ""),
+        debate_mode=_normalize_legacy_debate_mode(record.get("debate_mode")),
+        debate_mode_custom=str(record.get("debate_mode_custom") or ""),
+        max_turns=int(record.get("max_turns") or len(record.get("transcript") or [])),
+    )
+    return {
+        **record,
+        "config": restored_config,
+    }
+
+
+def _build_bootstrap_payload(*, route: str, initial_data: dict, app_base_path: str = "") -> dict:
+    return {
+        "route": route,
+        "apiBaseUrl": request.script_root or "",
+        "appBasePath": app_base_path,
+        "initialData": initial_data,
+    }
 
 
 def _build_home_bootstrap_payload(*, app_base_path: str = "") -> dict:
-    return {
-        "route": "home",
-        "apiBaseUrl": request.script_root or "",
-        "appBasePath": app_base_path,
-        "initialData": {
+    return _build_bootstrap_payload(
+        route="home",
+        app_base_path=app_base_path,
+        initial_data={
             "agents": _list_agents(),
             "models": MODELS,
         },
-    }
+    )
 
 
 def _build_debates_bootstrap_payload(*, app_base_path: str = "") -> dict:
-    return {
-        "route": "debates",
-        "apiBaseUrl": request.script_root or "",
-        "appBasePath": app_base_path,
-        "initialData": {
+    return _build_bootstrap_payload(
+        route="debates",
+        app_base_path=app_base_path,
+        initial_data={
             "debates": _load_debates_index(),
         },
-    }
+    )
+
+
+def _build_new_debate_bootstrap_payload(*, app_base_path: str = "") -> dict:
+    return _build_bootstrap_payload(
+        route="new-debate",
+        app_base_path=app_base_path,
+        initial_data={
+            "agents": _list_agents(),
+            "models": MODELS,
+        },
+    )
 
 
 def _build_debate_view_bootstrap_payload(debate_id: str, *, app_base_path: str = "") -> dict | None:
     debate = _load_debate_record(debate_id)
     if debate is None:
         return None
-    return {
-        "route": "debate-view",
-        "apiBaseUrl": request.script_root or "",
-        "appBasePath": app_base_path,
-        "initialData": {
+    return _build_bootstrap_payload(
+        route="debate-view",
+        app_base_path=app_base_path,
+        initial_data={
+            "agents": _list_agents(),
+            "models": MODELS,
             "debate": debate,
         },
-    }
+    )
 
 
 def _load_frontend_manifest() -> dict:
@@ -407,6 +563,12 @@ def get_debates_bootstrap():
     return jsonify(_build_debates_bootstrap_payload())
 
 
+@app.route("/api/bootstrap/newDebate")
+def get_new_debate_bootstrap():
+    return jsonify(_build_new_debate_bootstrap_payload())
+
+
+@app.route("/api/bootstrap/debate/<debate_id>")
 @app.route("/api/bootstrap/debates/<debate_id>")
 def get_debate_view_bootstrap(debate_id: str):
     bootstrap_payload = _build_debate_view_bootstrap_payload(debate_id)
@@ -455,6 +617,69 @@ def chat():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Błąd API: {e}"}), 502
+
+
+@app.route("/api/debates/start", methods=["POST"])
+def create_debate_record():
+    data = request.get_json(force=True)
+    setup = _normalize_debate_setup(data)
+    debate_id = _generate_debate_id()
+    started_at = datetime.now(timezone.utc).isoformat()
+    provider1 = str(data.get("provider1") or "openai")
+    provider2 = str(data.get("provider2") or "openai")
+    model1 = str(data.get("model1") or (OPENAI_MODEL if provider1 == "openai" else ANTHROPIC_MODEL))
+    model2 = str(data.get("model2") or (OPENAI_MODEL if provider2 == "openai" else ANTHROPIC_MODEL))
+    topic = str(data.get("topic") or "").strip() or _build_public_debate_topic(setup)
+    config = _build_debate_config(
+        agent1=str(data.get("agent1") or ""),
+        agent2=str(data.get("agent2") or ""),
+        provider1=provider1,
+        provider2=provider2,
+        model1=model1,
+        model2=model2,
+        thinking_effort1=data.get("thinking_effort1") or None,
+        thinking_effort2=data.get("thinking_effort2") or None,
+        max_tokens1=str(data.get("max_tokens1") or "4096"),
+        max_tokens2=str(data.get("max_tokens2") or "4096"),
+        topic=topic,
+        debate_mode=str(data.get("debate_mode") or "dialog"),
+        debate_mode_custom=str(data.get("debate_mode_custom") or ""),
+        max_turns=int(data.get("max_turns") or 10),
+    )
+    if not config["agent1"] or not config["agent2"]:
+        return jsonify({"error": "Brak konfiguracji agentów."}), 400
+
+    record = {
+        "id": debate_id,
+        "timestamp": started_at,
+        "agent1": config["agent1"],
+        "agent2": config["agent2"],
+        "provider1": provider1,
+        "provider2": provider2,
+        "model1": model1,
+        "model2": model2,
+        "thinking_effort1": config["thinking_effort1"],
+        "thinking_effort2": config["thinking_effort2"],
+        "max_tokens1": config["max_tokens1"],
+        "max_tokens2": config["max_tokens2"],
+        "debate_mode": config["debate_mode"],
+        "debate_mode_custom": config["debate_mode_custom"],
+        "topic": topic,
+        "config": config,
+        "setup": setup,
+        "history1": [],
+        "history2": [],
+        "transcript": [],
+        "live_notes": _empty_live_notes(topic),
+        "analysis": "",
+        "analysis_json": None,
+        "analysis_thinking": "",
+        "summary": "",
+        "summary_thinking": "",
+        "continuation_of": None,
+    }
+    _write_debate_snapshot(record)
+    return jsonify({"id": debate_id})
 
 
 # ── Streaming helpers ────────────────────────────────────────────────────────
@@ -644,6 +869,22 @@ DEBATE_MODES: dict[str, dict[str, str]] = {
 }
 
 
+def _normalize_legacy_debate_mode(value: object) -> str:
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return "dialog"
+
+    normalized_value = raw_value.lower()
+    if normalized_value in DEBATE_MODES:
+        return normalized_value
+
+    display_label_map = {
+        mode_config["label"].strip().lower(): mode_key
+        for mode_key, mode_config in DEBATE_MODES.items()
+    }
+    return display_label_map.get(normalized_value, "dialog")
+
+
 def _resolve_debate_mode(data: dict) -> tuple[str, str]:
     mode_key = str(data.get("debate_mode") or "dialog").strip().lower()
     custom_mode = str(data.get("debate_mode_custom") or "").strip()
@@ -681,11 +922,14 @@ def _run_debate(data: dict):
     raw_mt2    = data.get("max_tokens2") or "4096"
     mt1        = _resolve_turn_max_tokens(raw_mt1, p1)
     mt2        = _resolve_turn_max_tokens(raw_mt2, p2)
-    topic      = data.get("topic", "Czym jest prawda?")
+    setup      = _normalize_debate_setup(data)
+    topic      = data.get("topic", "Czym jest prawda?") or _build_public_debate_topic(setup)
     debate_mode_label, debate_mode_locative = _resolve_debate_mode(data)
     prompt_shape = _resolve_debate_prompt_shape(data)
     max_turns  = int(data.get("max_turns", 33))
     continuation_of = data.get("continuation_of") or None
+    debate_id = str(data.get("debate_id") or _generate_debate_id())
+    started_at = datetime.now(timezone.utc).isoformat()
 
     profile1 = load_agent(a1)
     profile2 = load_agent(a2)
@@ -719,6 +963,8 @@ def _run_debate(data: dict):
 
     sys1 += _identity_prefix(identity1, a1, identity2, a2)
     sys2 += _identity_prefix(identity2, a2, identity1, a1)
+    sys1 += _build_setup_prompt_block(setup, 1)
+    sys2 += _build_setup_prompt_block(setup, 2)
 
     initial_h1 = [{
         "role": "user",
@@ -730,6 +976,56 @@ def _run_debate(data: dict):
     live_notes = _normalize_live_notes(data.get("live_notes"), topic)
     start_turn = len(transcript)
     total_turns = start_turn + max_turns
+    debate_mode = data.get("debate_mode") or "dialog"
+    debate_mode_custom = data.get("debate_mode_custom") or ""
+    config = _build_debate_config(
+        agent1=a1,
+        agent2=a2,
+        provider1=p1,
+        provider2=p2,
+        model1=m1,
+        model2=m2,
+        thinking_effort1=te1,
+        thinking_effort2=te2,
+        max_tokens1=str(raw_mt1),
+        max_tokens2=str(raw_mt2),
+        topic=topic,
+        debate_mode=debate_mode,
+        debate_mode_custom=debate_mode_custom,
+        max_turns=max_turns,
+    )
+
+    def build_record(*, analysis: str = "", analysis_json: dict | None = None, analysis_thinking: str = "", summary: str = "", summary_thinking: str = "", summary_error: str | None = None) -> dict:
+        return {
+            "id": debate_id,
+            "timestamp": started_at,
+            "agent1": a1,
+            "agent2": a2,
+            "provider1": p1,
+            "provider2": p2,
+            "model1": m1,
+            "model2": m2,
+            "thinking_effort1": te1,
+            "thinking_effort2": te2,
+            "max_tokens1": str(raw_mt1),
+            "max_tokens2": str(raw_mt2),
+            "debate_mode": debate_mode_label,
+            "debate_mode_custom": debate_mode_custom,
+            "topic": topic,
+            "config": config,
+            "setup": setup,
+            "history1": h1,
+            "history2": h2,
+            "transcript": transcript,
+            "live_notes": live_notes,
+            "analysis": analysis,
+            "analysis_json": analysis_json,
+            "analysis_thinking": analysis_thinking,
+            "summary": summary,
+            "summary_thinking": summary_thinking,
+            "summary_error": summary_error,
+            "continuation_of": continuation_of,
+        }
 
     for offset in range(max_turns):
         turn = start_turn + offset
@@ -756,7 +1052,6 @@ def _run_debate(data: dict):
             elif ev["type"] == "done":
                 full = ev.get("content", full)
 
-        yield {"type": "turn_end", "agent": name, "turn": turn + 1, "total": total_turns}
         transcript.append({"agent": name, "content": full, "thinking": turn_thinking})
 
         try:
@@ -781,6 +1076,9 @@ def _run_debate(data: dict):
         else:
             h2.append({"role": "assistant", "content": full})
             h1.append({"role": "user", "content": full})
+
+        _write_debate_snapshot(build_record())
+        yield {"type": "turn_end", "agent": name, "turn": turn + 1, "total": total_turns}
 
     # ANALIZATOR
     yield {"type": "analysis_start"}
@@ -903,56 +1201,20 @@ def _run_debate(data: dict):
 
     yield {"type": "summary_done"}
 
-    # ZAPIS NA DYSK
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    debate_id = f"{ts}_{a1}_vs_{a2}"
-    record = {
-        "id": debate_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "agent1": a1, "agent2": a2,
-        "provider1": p1, "provider2": p2,
-        "model1": m1, "model2": m2,
-        "thinking_effort1": te1, "thinking_effort2": te2,
-        "max_tokens1": str(raw_mt1),
-        "max_tokens2": str(raw_mt2),
-        "debate_mode": debate_mode_label,
-        "debate_mode_custom": data.get("debate_mode_custom") or "",
-        "topic": topic,
-        "history1": h1,
-        "history2": h2,
-        "transcript": transcript,
-        "live_notes": live_notes,
-        "analysis": analysis_text,
-        "analysis_json": analysis_json,
-        "analysis_thinking": analysis_thinking,
-        "summary": summary_text,
-        "summary_thinking": summary_thinking,
-        "summary_error": summary_error,
-        "continuation_of": continuation_of,
-    }
-    DEBATES_DIR.mkdir(exist_ok=True)
-    (DEBATES_DIR / f"{debate_id}.json").write_text(
-        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    _write_debate_snapshot(
+        build_record(
+            analysis=analysis_text,
+            analysis_json=analysis_json,
+            analysis_thinking=analysis_thinking,
+            summary=summary_text,
+            summary_thinking=summary_thinking,
+            summary_error=summary_error,
+        )
     )
     yield {
         "type": "saved",
         "id": debate_id,
-        "config": {
-            "agent1": a1,
-            "agent2": a2,
-            "provider1": p1,
-            "provider2": p2,
-            "model1": m1,
-            "model2": m2,
-            "thinking_effort1": te1,
-            "thinking_effort2": te2,
-            "max_tokens1": str(raw_mt1),
-            "max_tokens2": str(raw_mt2),
-            "topic": topic,
-            "debate_mode": data.get("debate_mode") or "dialog",
-            "debate_mode_custom": data.get("debate_mode_custom") or "",
-            "max_turns": max_turns,
-        },
+        "config": config,
         "continuation": {
             "history1": h1,
             "history2": h2,
@@ -992,6 +1254,15 @@ def debates_list():
     )
 
 
+@app.route("/newDebate")
+def new_debate_view():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_new_debate_bootstrap_payload(),
+        title="POD-EXP - Nowa debata",
+    )
+
+
+@app.route("/debate/<debate_id>")
 @app.route("/debates/<debate_id>")
 def debate_view(debate_id: str):
     bootstrap_payload = _build_debate_view_bootstrap_payload(debate_id)
@@ -1038,6 +1309,15 @@ def frontend_preview_debates():
     )
 
 
+@app.route(f"{FRONTEND_PREVIEW_PREFIX}/newDebate")
+def frontend_preview_new_debate():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_new_debate_bootstrap_payload(app_base_path=FRONTEND_PREVIEW_PREFIX),
+        title="POD-EXP React Preview - New Debate",
+    )
+
+
+@app.route(f"{FRONTEND_PREVIEW_PREFIX}/debate/<debate_id>")
 @app.route(f"{FRONTEND_PREVIEW_PREFIX}/debates/<debate_id>")
 def frontend_preview_debate_view(debate_id: str):
     bootstrap_payload = _build_debate_view_bootstrap_payload(

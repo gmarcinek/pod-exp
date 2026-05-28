@@ -29,7 +29,7 @@
     --a2-bg: #065d54;
     --a2-border: #a5b1af78;
     --radius: 14px;
-    --sidebar: 370px;
+    --sidebar: 25vw;
 }
 
 * {
@@ -544,7 +544,7 @@ details.think[open] summary::before {
 }
 
 .ana-tf {
-    background: var(--surface2);
+    background: var(--surfacte2);
     border: 1px solid var(--border);
     border-radius: 7px;
     padding: 8px 10px;

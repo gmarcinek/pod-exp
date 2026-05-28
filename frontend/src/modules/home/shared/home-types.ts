@@ -26,6 +26,11 @@ export type DebateSettings = {
   max_turns: number;
 };
 
+export type DebateHistoryMessage = {
+  role: string;
+  content: string;
+};
+
 export type ChatTranscriptEntry = {
   id: string;
   role: "user" | "assistant" | "tool" | "error";
@@ -99,8 +104,8 @@ export type LiveNotes = {
 };
 
 export type DebateContinuationState = {
-  history1?: string[];
-  history2?: string[];
+  history1?: DebateHistoryMessage[];
+  history2?: DebateHistoryMessage[];
   transcript?: Array<{ agent: string; content: string; thinking?: string }>;
   live_notes?: LiveNotes | null;
   turns_completed?: number;

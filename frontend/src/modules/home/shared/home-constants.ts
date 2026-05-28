@@ -27,6 +27,8 @@ export const DEBATE_MODE_OPTIONS = [
   { value: "inne", label: "Inne" },
 ] as const;
 
+const ALLOWED_DEBATE_MODES = new Set<string>(DEBATE_MODE_OPTIONS.map((option) => option.value));
+
 export const MAX_TOKEN_OPTIONS = ["512", "1024", "2048", "4096", "8192", "12288", "32768", "max"];
 
 export const THINKING_OPTIONS = [
@@ -129,6 +131,10 @@ export function normalizeDebateSettings(value: Partial<DebateSettings> | null | 
   const model1 = getModelOrFallback(models, provider1, value?.model1);
   const model2 = getModelOrFallback(models, provider2, value?.model2);
   const maxTurns = Number.parseInt(String(value?.max_turns ?? fallback.max_turns), 10);
+  const debateMode =
+    typeof value?.debate_mode === "string" && ALLOWED_DEBATE_MODES.has(value.debate_mode)
+      ? value.debate_mode
+      : fallback.debate_mode;
 
   return {
     agent1: value?.agent1 && agents.includes(value.agent1) ? value.agent1 : fallback.agent1,
@@ -142,7 +148,7 @@ export function normalizeDebateSettings(value: Partial<DebateSettings> | null | 
     max_tokens1: value?.max_tokens1 && MAX_TOKEN_OPTIONS.includes(String(value.max_tokens1)) ? String(value.max_tokens1) : fallback.max_tokens1,
     max_tokens2: value?.max_tokens2 && MAX_TOKEN_OPTIONS.includes(String(value.max_tokens2)) ? String(value.max_tokens2) : fallback.max_tokens2,
     topic: typeof value?.topic === "string" && value.topic.trim() ? value.topic.trim() : fallback.topic,
-    debate_mode: typeof value?.debate_mode === "string" && value.debate_mode ? value.debate_mode : fallback.debate_mode,
+    debate_mode: debateMode,
     debate_mode_custom: typeof value?.debate_mode_custom === "string" ? value.debate_mode_custom : fallback.debate_mode_custom,
     max_turns: Number.isFinite(maxTurns) ? Math.min(Math.max(maxTurns, 2), 32) : fallback.max_turns,
   } satisfies DebateSettings;

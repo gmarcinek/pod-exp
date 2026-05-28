@@ -10,10 +10,12 @@ function getBootstrapEndpoint(bootstrap: BootstrapPayload): string | null {
   switch (bootstrap.route) {
     case "debates":
       return "/api/bootstrap/debates";
+    case "new-debate":
+      return "/api/bootstrap/newDebate";
     case "debate-view": {
       const debateId = getDebateIdFromPathname(window.location.pathname, bootstrap.appBasePath);
 
-      return debateId ? `/api/bootstrap/debates/${encodeURIComponent(debateId)}` : null;
+      return debateId ? `/api/bootstrap/debate/${encodeURIComponent(debateId)}` : null;
     }
     case "home":
     default:
@@ -25,8 +27,10 @@ function getBootstrapFailureMessage(route: BootstrapPayload["route"]): string {
   switch (route) {
     case "debates":
       return "Nie udało się pobrać archiwum debat w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/debates` odpowiada lokalnie.";
+    case "new-debate":
+      return "Nie udało się pobrać placeholdera nowej debaty w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/newDebate` odpowiada lokalnie.";
     case "debate-view":
-      return "Nie udało się pobrać danych debaty w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/debates/<debate_id>` odpowiada lokalnie.";
+      return "Nie udało się pobrać danych debaty w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/debate/<debate_id>` odpowiada lokalnie.";
     case "home":
     default:
       return "Nie udało się pobrać danych startowych w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/home` odpowiada lokalnie.";

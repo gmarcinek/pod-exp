@@ -26,7 +26,7 @@ export function ArchivePage({ debates }: ArchivePageProps) {
 
       <main className={styles.content}>
         <h1 className={styles.title}>Odbyte debaty</h1>
-        <p className={styles.pageSubtitle}>Kliknij debatę żeby zobaczyć pełny transkrypt.</p>
+        <p className={styles.pageSubtitle}>Kliknij debatę, żeby odtworzyć sesję i kontynuować ją z zapisanych ustawień.</p>
 
         {debates.length === 0 ? (
           <div className={styles.emptyState}>
@@ -40,7 +40,7 @@ export function ArchivePage({ debates }: ArchivePageProps) {
         ) : (
           <div className={styles.debateList}>
             {debates.map((debate) => (
-              <a key={debate.id} href={buildAppPath(`/debates/${debate.id}`)} className={styles.debateCard}>
+              <a key={debate.id} href={buildAppPath(`/debate/${debate.id}`)} className={styles.debateCard}>
                 <div className={styles.cardTop}>
                   <div className={styles.vsWrap}>
                     <span className={`${styles.agentPill} ${styles.agentPillA1}`}>{debate.agent1}</span>

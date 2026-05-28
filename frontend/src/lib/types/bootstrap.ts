@@ -1,4 +1,4 @@
-export type BootstrapRoute = "home" | "debates" | "debate-view";
+export type BootstrapRoute = "home" | "debates" | "debate-view" | "new-debate";
 
 export type ModelCatalog = Record<string, string[]>;
 
@@ -28,7 +28,23 @@ export type DebateTranscriptEntry = {
 	thinking?: string;
 };
 
+export type DebateHistoryMessage = {
+	role: string;
+	content: string;
+};
+
 export type DebateAnalysisData = Record<string, unknown>;
+export type DebateConfigData = Record<string, unknown>;
+export type DebateLiveNotesData = Record<string, unknown>;
+
+export type DebateSetupData = {
+	publicGoal: string;
+	publicDocuments: string;
+	agent1PrivateGoal: string;
+	agent1PrivateDocuments: string;
+	agent2PrivateGoal: string;
+	agent2PrivateDocuments: string;
+};
 
 export type DebateRecord = {
 	id: string;
@@ -46,7 +62,12 @@ export type DebateRecord = {
 	debate_mode?: string;
 	debate_mode_custom?: string;
 	topic: string;
+	config?: DebateConfigData | null;
+	setup?: DebateSetupData | null;
+	history1?: DebateHistoryMessage[];
+	history2?: DebateHistoryMessage[];
 	transcript: DebateTranscriptEntry[];
+	live_notes?: DebateLiveNotesData | null;
 	analysis?: string;
 	analysis_json?: DebateAnalysisData | null;
 	analysis_thinking?: string;
@@ -54,7 +75,14 @@ export type DebateRecord = {
 	summary_thinking?: string;
 };
 
+export type NewDebateBootstrapData = {
+	agents: string[];
+	models: ModelCatalog;
+};
+
 export type DebateViewBootstrapData = {
+	agents: string[];
+	models: ModelCatalog;
 	debate: DebateRecord;
 };
 
@@ -79,7 +107,15 @@ export type DebateViewBootstrapPayload = {
 	initialData: DebateViewBootstrapData;
 };
 
+export type NewDebateBootstrapPayload = {
+	route: "new-debate";
+	apiBaseUrl: string;
+	appBasePath: string;
+	initialData: NewDebateBootstrapData;
+};
+
 export type BootstrapPayload =
 	| HomeBootstrapPayload
 	| DebatesBootstrapPayload
-	| DebateViewBootstrapPayload;
+	| DebateViewBootstrapPayload
+	| NewDebateBootstrapPayload;

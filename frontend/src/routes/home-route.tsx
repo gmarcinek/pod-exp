@@ -1,5 +1,5 @@
-import { HomePage } from "../modules/home/home-page";
 import type { HomeBootstrapData } from "../lib/types/bootstrap";
+import { HomePage } from "../modules/home/home-page";
 
 type HomeRouteProps = {
   data: HomeBootstrapData;

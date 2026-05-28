@@ -74,277 +74,33 @@ def load_tool(name: str) -> dict:
 
 def build_system_prompt(profile: dict) -> str:
     """
-    Buduje system prompt na podstawie profilu epistemicznego agenta.
-    Uwzględnia pełny profil JSON, zachowując czytelne sekcje promptu.
+    Buduje prosty system prompt oparty o pełny profil JSON as is.
     """
-    language = profile.get("language", "pl")
-    dynamics = profile.get("cognitive_dynamics", {})
-    top_level_exclusions = profile.get("exclusion_clauses")
-    exclusions = top_level_exclusions
-    if not exclusions and isinstance(dynamics, dict):
-        exclusions = dynamics.get("exclusion_clauses")
+    return json.dumps(profile, ensure_ascii=False, indent=2)
 
-    def is_empty(value: Any) -> bool:
-        return value is None or value == "" or value == [] or value == {}
 
-    def scalar_to_text(value: Any) -> str:
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        return str(value)
+def check_system_prompt_contains_full_profile(
+    profile_name: str,
+    *,
+    profile_kind: Literal["agent", "tool"] = "agent",
+    required_top_level_keys: tuple[str, ...] = (),
+) -> None:
+    """Lekki lokalny check, że prompt jest dokładnie pełnym serializowanym profilem."""
+    loader = load_agent if profile_kind == "agent" else load_tool
+    profile = loader(profile_name)
+    serialized_profile = json.dumps(profile, ensure_ascii=False, indent=2)
+    prompt = build_system_prompt(profile)
 
-    def append_value(lines: list[str], value: Any, indent: int = 0) -> None:
-        prefix = "  " * indent
+    if prompt != serialized_profile:
+        raise AssertionError(
+            f"Prompt dla {profile_kind} '{profile_name}' nie jest dokładnie pełnym serializowanym JSON-em profilu."
+        )
 
-        if isinstance(value, dict):
-            for key, nested in value.items():
-                if is_empty(nested):
-                    continue
-                if key in {"required_schema", "enums"} and isinstance(nested, (dict, list)):
-                    dumped = json.dumps(nested, ensure_ascii=False, indent=2)
-                    lines.append(f"{prefix}- {key}:")
-                    for dumped_line in dumped.splitlines():
-                        lines.append(f"{prefix}  {dumped_line}")
-                    continue
-                if isinstance(nested, (dict, list)):
-                    lines.append(f"{prefix}- {key}:")
-                    append_value(lines, nested, indent + 1)
-                else:
-                    lines.append(f"{prefix}- {key}: {scalar_to_text(nested)}")
-            return
-
-        if isinstance(value, list):
-            for item in value:
-                if is_empty(item):
-                    continue
-                if isinstance(item, dict):
-                    if {"name", "description"}.issubset(item):
-                        lines.append(f"{prefix}- {item['name']}: {item['description']}")
-                        extras = {
-                            key: nested for key, nested in item.items()
-                            if key not in {"name", "description"} and not is_empty(nested)
-                        }
-                        if extras:
-                            append_value(lines, extras, indent + 1)
-                    elif {"name", "rule"}.issubset(item):
-                        lines.append(f"{prefix}- {item['name']}: {item['rule']}")
-                        extras = {
-                            key: nested for key, nested in item.items()
-                            if key not in {"name", "rule"} and not is_empty(nested)
-                        }
-                        if extras:
-                            append_value(lines, extras, indent + 1)
-                    elif {"belief", "rank"}.issubset(item):
-                        lines.append(f"{prefix}- [{item['rank']}] {item['belief']}")
-                        extras = {
-                            key: nested for key, nested in item.items()
-                            if key not in {"belief", "rank"} and not is_empty(nested)
-                        }
-                        if extras:
-                            append_value(lines, extras, indent + 1)
-                    elif {"trigger", "effect"}.issubset(item):
-                        lines.append(f"{prefix}- trigger: {item['trigger']}")
-                        lines.append(f"{prefix}  effect: {item['effect']}")
-                        extras = {
-                            key: nested for key, nested in item.items()
-                            if key not in {"trigger", "effect"} and not is_empty(nested)
-                        }
-                        if extras:
-                            append_value(lines, extras, indent + 1)
-                    else:
-                        lines.append(f"{prefix}-")
-                        append_value(lines, item, indent + 1)
-                elif isinstance(item, list):
-                    lines.append(f"{prefix}-")
-                    append_value(lines, item, indent + 1)
-                else:
-                    lines.append(f"{prefix}- {scalar_to_text(item)}")
-            return
-
-        lines.append(f"{prefix}{scalar_to_text(value)}")
-
-    def append_section(
-        lines: list[str],
-        title: str,
-        value: Any,
-        preferred_order: list[str] | None = None,
-    ) -> None:
-        if is_empty(value):
-            return
-
-        if isinstance(value, dict) and preferred_order:
-            ordered_value: dict[str, Any] = {}
-            for key in preferred_order:
-                nested = value.get(key)
-                if not is_empty(nested):
-                    ordered_value[key] = nested
-            for key, nested in value.items():
-                if key not in ordered_value and not is_empty(nested):
-                    ordered_value[key] = nested
-            value = ordered_value
-
-        if lines:
-            lines.append("")
-        lines.append(f"{title}:")
-        append_value(lines, value, indent=1)
-
-    prompt_lines = [
-        "Traktuj poniższy profil jako wiążący porządek poznawczy, styl odpowiedzi i ograniczenia operacyjne.",
-    ]
-
-    metadata = {
-        "profile_type": profile.get("profile_type"),
-        "profile_version": profile.get("profile_version"),
-        "language": language,
-    }
-    append_section(prompt_lines, "Metadane profilu", metadata)
-    append_section(
-        prompt_lines,
-        "Agent identity",
-        profile.get("agent_identity"),
-        preferred_order=[
-            "designation",
-            "short_name",
-            "class",
-            "narrative_identity",
-            "core_sentence",
-            "tone",
-            "role_in_experiment",
-            "temperament",
-        ],
-    )
-    append_section(
-        prompt_lines,
-        "Ontology",
-        profile.get("ontology"),
-        preferred_order=[
-            "world_assumption",
-            "admitted_entities",
-            "conditionally_admitted_entities",
-            "rejected_defaults",
-            "entity_visibility_policy",
-        ],
-    )
-    append_section(
-        prompt_lines,
-        "Epistemology",
-        profile.get("epistemology"),
-        preferred_order=[
-            "knowledge_sources",
-            "source_prioritization",
-            "disallowed_shortcuts",
-            "epistemic_posture",
-        ],
-    )
-    append_section(
-        prompt_lines,
-        "Truth criterion",
-        profile.get("truth_criterion"),
-        preferred_order=[
-            "definition",
-            "acceptance_layers",
-            "rejection_conditions",
-        ],
-    )
-
-    dynamics_section = dynamics
-    if isinstance(dynamics_section, dict):
-        dynamics_section = {
-            key: value for key, value in dynamics_section.items() if key != "exclusion_clauses"
-        }
-    append_section(
-        prompt_lines,
-        "Cognitive dynamics",
-        dynamics_section,
-        preferred_order=["attractors", "bifurcators", "stability_rules"],
-    )
-    append_section(prompt_lines, "Base beliefs", profile.get("base_beliefs"))
-    append_section(prompt_lines, "Exclusion clauses", exclusions)
-    append_section(
-        prompt_lines,
-        "Blind spots",
-        profile.get("blind_spots"),
-        preferred_order=["known_risks", "self_warning", "visibility_limit_statement"],
-    )
-    append_section(
-        prompt_lines,
-        "Expression policy",
-        profile.get("expression_policy"),
-        preferred_order=["style", "tone", "must_include", "must_not_include"],
-    )
-    append_section(
-        prompt_lines,
-        "Blindness radius",
-        profile.get("blindness_radius"),
-        preferred_order=["level", "score", "primary_invisible_zones", "notes"],
-    )
-    append_section(
-        prompt_lines,
-        "Uncertainty resilience",
-        profile.get("uncertainty_resilience"),
-        preferred_order=["level", "score", "behaviour_under_uncertainty", "failure_modes"],
-    )
-    append_section(
-        prompt_lines,
-        "Cognitive tendencies",
-        profile.get("cognitive_tendencies"),
-        preferred_order=["dominant_tendencies", "secondary_tendencies", "counter_tendencies"],
-    )
-    append_section(
-        prompt_lines,
-        "Behavioral defaults",
-        profile.get("behavioral_defaults"),
-        preferred_order=["response_style", "uncertainty_handling"],
-    )
-
-    known_top_level_keys = {
-        "profile_type",
-        "profile_version",
-        "language",
-        "agent_identity",
-        "ontology",
-        "epistemology",
-        "truth_criterion",
-        "cognitive_dynamics",
-        "base_beliefs",
-        "exclusion_clauses",
-        "blind_spots",
-        "expression_policy",
-        "blindness_radius",
-        "uncertainty_resilience",
-        "cognitive_tendencies",
-        "behavioral_defaults",
-        "output_contract",
-    }
-    for key, value in profile.items():
-        if key in known_top_level_keys or is_empty(value):
-            continue
-        append_section(prompt_lines, f"Additional section: {key}", value)
-
-    append_section(
-        prompt_lines,
-        "Output contract",
-        profile.get("output_contract"),
-        preferred_order=[
-            "format",
-            "preferred_format",
-            "description",
-            "notes",
-            "minimum_quality_bar",
-            "agent_motto",
-            "final_instruction",
-            "enums",
-            "required_schema",
-        ],
-    )
-
-    if language == "pl":
-        prompt_lines.append("")
-        prompt_lines.append("Odpowiadaj po polsku.")
-    else:
-        prompt_lines.append("")
-        prompt_lines.append(f"Respond in language: {language}.")
-
-    return "\n".join(prompt_lines)
+    missing_keys = [key for key in required_top_level_keys if f'"{key}"' not in prompt]
+    if missing_keys:
+        raise AssertionError(
+            f"Prompt dla {profile_kind} '{profile_name}' nie zawiera kluczy top-level: {', '.join(missing_keys)}"
+        )
 
 
 # ── Klienci API ──────────────────────────────────────────────────────────────

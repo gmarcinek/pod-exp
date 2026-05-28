@@ -21,7 +21,7 @@ export function AppSurface({ apiBaseUrl, currentRoute, children }: AppSurfacePro
     );
   }
 
-  if (currentRoute === "debates" || currentRoute === "debate-view") {
+  if (currentRoute === "debates" || currentRoute === "debate-view" || currentRoute === "new-debate") {
     return (
       <div className="app-shell app-shell--plain" data-api-base-url={apiBaseUrl}>
         {children}

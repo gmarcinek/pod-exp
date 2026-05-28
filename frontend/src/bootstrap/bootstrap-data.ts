@@ -2,13 +2,18 @@ import type {
   BootstrapPayload,
   BootstrapRoute,
   DebateAnalysisData,
+  DebateConfigData,
+  DebateHistoryMessage,
+  DebateLiveNotesData,
   DebateListItem,
   DebateRecord,
+  DebateSetupData,
   DebateTranscriptEntry,
   DebatesBootstrapData,
   DebateViewBootstrapData,
   HomeBootstrapData,
   ModelCatalog,
+  NewDebateBootstrapData,
 } from "../lib/types/bootstrap";
 
 export type { BootstrapPayload, BootstrapRoute } from "../lib/types/bootstrap";
@@ -38,6 +43,11 @@ const defaultDebatesData: DebatesBootstrapData = {
   debates: [],
 };
 
+const defaultNewDebateData: NewDebateBootstrapData = {
+  agents: [],
+  models: {},
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -51,6 +61,22 @@ function readOptionalString(value: unknown): string | undefined {
 }
 
 function readAnalysisData(value: unknown): DebateAnalysisData | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return isRecord(value) ? value : null;
+}
+
+function readConfigData(value: unknown): DebateConfigData | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return isRecord(value) ? value : null;
+}
+
+function readLiveNotesData(value: unknown): DebateLiveNotesData | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -99,6 +125,14 @@ function isTranscriptEntry(value: unknown): value is DebateTranscriptEntry {
   );
 }
 
+function isHistoryMessage(value: unknown): value is DebateHistoryMessage {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.role === "string" && typeof value.content === "string";
+}
+
 function isDebateRecord(value: unknown): value is DebateRecord {
   if (!isRecord(value)) {
     return false;
@@ -118,7 +152,7 @@ function isDebateRecord(value: unknown): value is DebateRecord {
 }
 
 function parseRoute(value: unknown): BootstrapRoute {
-  if (value === "home" || value === "debates" || value === "debate-view") {
+  if (value === "home" || value === "debates" || value === "debate-view" || value === "new-debate") {
     return value;
   }
 
@@ -184,6 +218,40 @@ function parseDebatesData(value: unknown): DebatesBootstrapData {
   };
 }
 
+function parseNewDebateData(value: unknown): NewDebateBootstrapData {
+  if (!isRecord(value)) {
+    return defaultNewDebateData;
+  }
+
+  return {
+    agents: isStringArray(value.agents) ? value.agents : [],
+    models: isModelCatalog(value.models) ? value.models : {},
+  };
+}
+
+function isDebateSetupData(value: unknown): value is DebateSetupData {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.publicGoal === "string" &&
+    typeof value.publicDocuments === "string" &&
+    typeof value.agent1PrivateGoal === "string" &&
+    typeof value.agent1PrivateDocuments === "string" &&
+    typeof value.agent2PrivateGoal === "string" &&
+    typeof value.agent2PrivateDocuments === "string"
+  );
+}
+
+function readDebateSetupData(value: unknown): DebateSetupData | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return isDebateSetupData(value) ? value : null;
+}
+
 function parseTranscriptEntry(value: unknown): DebateTranscriptEntry | null {
   if (!isTranscriptEntry(value)) {
     return null;
@@ -205,7 +273,12 @@ function createFallbackDebate(): DebateRecord {
     model1: "",
     model2: "",
     topic: "",
+    config: null,
+    setup: null,
+    history1: [],
+    history2: [],
     transcript: [],
+    live_notes: null,
     analysis: "",
     analysis_json: null,
     analysis_thinking: "",
@@ -223,12 +296,19 @@ function createDefaultPayload(route: BootstrapRoute): BootstrapPayload {
         appBasePath: "",
         initialData: defaultDebatesData,
       };
+    case "new-debate":
+      return {
+        route,
+        apiBaseUrl: "",
+        appBasePath: "",
+        initialData: defaultNewDebateData,
+      };
     case "debate-view":
       return {
         route,
         apiBaseUrl: "",
         appBasePath: "",
-        initialData: { debate: createFallbackDebate() },
+        initialData: { agents: [], models: {}, debate: createFallbackDebate() },
       };
     case "home":
     default:
@@ -239,11 +319,15 @@ function createDefaultPayload(route: BootstrapRoute): BootstrapPayload {
 export function getBootstrapRouteFromPathname(pathname: string, appBasePath = ""): BootstrapRoute {
   const routePath = stripAppBasePath(pathname, appBasePath);
 
+  if (routePath === "/newDebate") {
+    return "new-debate";
+  }
+
   if (routePath === "/debates") {
     return "debates";
   }
 
-  if (routePath.startsWith("/debates/")) {
+  if (routePath.startsWith("/debate/") || routePath.startsWith("/debates/")) {
     return "debate-view";
   }
 
@@ -253,13 +337,19 @@ export function getBootstrapRouteFromPathname(pathname: string, appBasePath = ""
 export function getDebateIdFromPathname(pathname: string, appBasePath = ""): string | null {
   const routePath = stripAppBasePath(pathname, appBasePath);
 
-  if (!routePath.startsWith("/debates/")) {
-    return null;
+  const routePrefixes = ["/debate/", "/debates/"];
+
+  for (const routePrefix of routePrefixes) {
+    if (!routePath.startsWith(routePrefix)) {
+      continue;
+    }
+
+    const debateId = routePath.slice(routePrefix.length).split("/")[0] ?? "";
+
+    return debateId ? decodeURIComponent(debateId) : null;
   }
 
-  const debateId = routePath.slice("/debates/".length).split("/")[0] ?? "";
-
-  return debateId ? decodeURIComponent(debateId) : null;
+  return null;
 }
 
 function parseDebateRecord(value: DebateRecord): DebateRecord {
@@ -279,7 +369,12 @@ function parseDebateRecord(value: DebateRecord): DebateRecord {
     debate_mode: readOptionalString(value.debate_mode),
     debate_mode_custom: readOptionalString(value.debate_mode_custom),
     topic: readString(value.topic),
+    config: readConfigData(value.config),
+    setup: readDebateSetupData(value.setup),
+    history1: Array.isArray(value.history1) ? value.history1.filter(isHistoryMessage).map((entry) => ({ role: entry.role, content: entry.content })) : [],
+    history2: Array.isArray(value.history2) ? value.history2.filter(isHistoryMessage).map((entry) => ({ role: entry.role, content: entry.content })) : [],
     transcript: value.transcript.map(parseTranscriptEntry).filter((entry): entry is DebateTranscriptEntry => entry !== null),
+    live_notes: readLiveNotesData(value.live_notes),
     analysis: readOptionalString(value.analysis),
     analysis_json: readAnalysisData(value.analysis_json),
     analysis_thinking: readOptionalString(value.analysis_thinking),
@@ -290,10 +385,12 @@ function parseDebateRecord(value: DebateRecord): DebateRecord {
 
 function parseDebateViewData(value: unknown): DebateViewBootstrapData {
   if (!isRecord(value) || !isDebateRecord(value.debate)) {
-    return { debate: createFallbackDebate() };
+    return { agents: [], models: {}, debate: createFallbackDebate() };
   }
 
   return {
+    agents: isStringArray(value.agents) ? value.agents : [],
+    models: isModelCatalog(value.models) ? value.models : {},
     debate: parseDebateRecord(value.debate),
   };
 }
@@ -315,6 +412,13 @@ export function parseBootstrapPayload(payload: unknown): BootstrapPayload {
         apiBaseUrl,
         appBasePath,
         initialData: parseDebatesData(payload.initialData),
+      };
+    case "new-debate":
+      return {
+        route,
+        apiBaseUrl,
+        appBasePath,
+        initialData: parseNewDebateData(payload.initialData),
       };
     case "debate-view":
       return {

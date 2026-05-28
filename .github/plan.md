@@ -16,9 +16,15 @@
 - [ ] TASK-11: Zweryfikować zgodność 1:1 funkcjonalną i wizualną — wykonać porównanie starego i nowego UI dla czatu, debaty, archiwum i widoku debaty, sprawdzić persystencję ustawień, streaming, analizę, markdown, nawigację i wygląd oraz usunąć wykryte regresje.
 
 ## Mini-plan: Pełny prompt z profilu JSON
-- [x] TASK-12: Rozszerzyć składanie system promptu o pełny profil JSON — przebudować `build_system_prompt(profile)` w `client.py` tak, aby zawsze uwzględniał wszystkie istotne pola obecnego schematu profilu agenta, w tym brakujące sekcje opisane w README i realnych plikach `agents/*.json`, oraz poprawić odczyt `exclusion_clauses` z poziomu top-level zamiast z `cognitive_dynamics`.
-- [ ] TASK-13: Dodać lekki check kompletności promptu — wprowadzić mały, lokalny check dla `build_system_prompt(profile)` na przykładowym profilu/agencie, który potwierdzi obecność reprezentacji kluczowych sekcji schematu w promptcie oraz zabezpieczy przed pominięciem top-level `exclusion_clauses`.
-- [ ] TASK-14: Zweryfikować slice backendowy kompilacją i checkiem promptu — uruchomić `python -m py_compile client.py app.py` oraz lekki check budowy promptu dla przykładowego agenta, aby potwierdzić poprawność składania promptu po zmianach.
+- [x] TASK-12: Domknąć budowę system promptu do pełnego JSON profilu as is — usunąć z `build_system_prompt(profile)` w `client.py` wszelki tekstowy wrapper i zwracać wyłącznie pełny serializowany JSON profilu, bez ręcznego składania sekcji i bez unifikacji DTO na tym etapie, tak aby ten sam mechanizm działał zarówno dla agentów z `agents/*.json`, jak i tooli z `tools/*.json`.
+- [x] TASK-13: Dodać lekki, repozytoryjny check na profilu `meta-nihilizm-epistemiczny` i ścieżce toola — wprowadzić mały wykonywalny artefakt w repo, np. skrypt lub dedykowaną komendę check, który realnie uruchamia `build_system_prompt(profile)` i potwierdza, że prompt zawiera pełny JSON przykładowego profilu `meta-nihilizm-epistemiczny` bez ręcznego mapowania sekcji oraz że ten sam mechanizm działa także dla profilu ładowanego z `tools/*.json`.
+- [x] TASK-14: Zweryfikować slice backendowy kompilacją i wykonywalnym checkiem promptu — uruchomić `python -m py_compile client.py app.py` oraz nowy repozytoryjny skrypt/command z TASK-13 dla przykładowego agenta i toola, aby potwierdzić poprawność prostego promptu JSON po zmianach wykonywalnym checkiem, a nie tylko helperem w kodzie.
+
+## Mini-plan: Persystencja debat i nowe trasy debaty
+- [x] TASK-15: Zmienić identyfikację i persystencję debaty po stronie backendu — przebudować generowanie ID nowej debaty w `app.py` na format `timestamp_{short_uuid}` oraz zapisywać ten sam plik JSON po każdym zakończonym streamie odpowiedzi, tak aby snapshot debaty i jej ustawień był utrwalany inkrementalnie zamiast dopiero na końcu `_run_debate()`.
+- [x] TASK-16: Dodać backendowe ładowanie i bootstrap dla `/debate/<id>` oraz `/newDebate` w dev i prod — rozszerzyć Flask routes i bootstrap payload builders tak, aby singular route `/debate/<id>` ładowała debatę z JSON wraz z ustawieniami, `/newDebate` zwracało osobny placeholder bootstrap, a odpowiadające endpointy działały symetrycznie dla renderu produkcyjnego i dev preview/bootstrap.
+- [x] TASK-17: Domknąć frontendowy ekran sesji debaty dla `/debate/<id>` na bazie JSON bootstrapu — doprowadzić mapowanie ustawień zapisanej debaty do stanu `debate-view` do zgodności z JSON bootstrapem, w tym brać `debate_mode` i `debate_mode_custom` z `config`, znormalizować ustawienia z walidacją `debate_mode` względem dozwolonych wartości oraz po stronie backendu przy backfillu `config` dla legacy debat normalizować `debate_mode` do kanonicznej wartości enum zamiast display label, tak aby odtworzenie sesji debaty było poprawne; `/newDebate` pozostaje na tym etapie pustą stroną.
+- [ ] TASK-18: Zamienić pusty `/newDebate` na prosty ekran startu debaty i zweryfikować pełny flow w dev/prod — na `/newDebate` wykorzystać ogólny layout debaty, ale bez wertykalnego centrowania, z przewijalnym widokiem pokazującym całość, formularzem ułożonym w jednej kolumnie z polami tekstowymi jedno pod drugim o szerokości około 800px oraz przyciskiem `Rozpocznij debatę` obok formularza; kliknięcie ma uruchamiać debatę i kierować na stronę rozpoczynającej się sesji z ustawieniami z formularza `/newDebate` i danymi z tych pól, a na stronie live debaty sidebar ma być zredukowany do skróconego, read-only setupu oraz przycisków `STOP`, `Continue` i informacji o liczbie kroków; w ramach domknięcia zadania trzeba też zapewnić pełne wsparcie dev/preview dla nowego route live debaty oraz stabilne odczytanie draftu live debaty bez ryzyka wyczyszczenia go przez `React.StrictMode` przy mount; następnie sprawdzić lokalnie, że `/debate/<id>` nadal poprawnie odtwarza debatę z JSON-a, a nowy flow `/newDebate` działa w obu trybach.
 
 ## Zależności
 - TASK-02 wymaga TASK-01
@@ -38,3 +44,6 @@
 - TASK-11 wymaga TASK-10
 - TASK-13 wymaga TASK-12
 - TASK-14 wymaga TASK-13
+- TASK-16 wymaga TASK-15
+- TASK-17 wymaga TASK-16
+- TASK-18 wymaga TASK-17

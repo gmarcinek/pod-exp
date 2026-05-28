@@ -1,0 +1,211 @@
+﻿<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POD-EXP</title>
+<link rel="stylesheet" href="/static/pod.css">
+<link rel="stylesheet" href="/static/index.css">
+</head>
+<body>
+
+<!-- ─── Sidebar ─────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="mode-switch">
+    <button class="mode-btn active" id="btn-chat-mode" onclick="setMode('chat')">💬 Chat</button>
+    <button class="mode-btn" id="btn-debate-mode" onclick="setMode('debate')">⚔ Debata</button>
+  </div>
+
+  <div class="logo">
+    POD-EXP
+    <small>Eksperyment epistemiczny</small>
+  </div>
+  <a href="/debates" target="_blank" style="font-size:11.5px;color:var(--text-dim);text-align:center;padding:4px 0;border:1px solid var(--border);border-radius:8px;transition:border-color .15s" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">🗂 Archiwum debat</a>
+
+  <!-- ── CHAT CONFIG ── -->
+  <div id="chat-cfg" style="display:flex;flex-direction:column;gap:18px">
+    <div class="field">
+      <div class="label">Agent</div>
+      <select id="sel-agent">
+        {% for a in agents %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <div class="label">Provider</div>
+      <div class="toggle">
+        <input type="radio" id="p-openai" name="provider" value="openai" checked>
+        <label for="p-openai">OpenAI</label>
+        <input type="radio" id="p-anthropic" name="provider" value="anthropic">
+        <label for="p-anthropic">Anthropic</label>
+      </div>
+    </div>
+    <div class="field">
+      <div class="label">Model</div>
+      <select id="sel-model"></select>
+    </div>
+    <div class="field" id="thinking-field" style="display:none">
+      <div class="label">Thinking effort</div>
+      <select id="sel-thinking">
+        <option value="">— wyłączony —</option>
+        <option value="auto">auto</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+        <option value="low">low</option>
+      </select>
+    </div>
+    <button class="btn-new" onclick="newChat()">＋  Nowa rozmowa</button>
+  </div>
+
+  <!-- ── DEBATE CONFIG ── -->
+  <div id="debate-cfg" style="display:none;flex-direction:column;gap:14px">
+    <div class="field">
+      <div class="label">Tryb rozmowy</div>
+      <select id="d-mode" onchange="toggleDebateModeCustom()">
+        <option value="dialog" selected>Dialog</option>
+        <option value="rozmowa">Rozmowa</option>
+        <option value="debata">Debata</option>
+        <option value="spor">Spór</option>
+        <option value="klotnia">Kłótnia</option>
+        <option value="terapia">Terapia</option>
+        <option value="konsultacja">Konsultacja</option>
+        <option value="wspolne_dociekanie">Wspólne dociekanie</option>
+        <option value="burza_rozwiazan">Burza rozwiązań</option>
+        <option value="mentoring">Mentoring</option>
+        <option value="pojednanie">Pojednanie</option>
+        <option value="negocjacje">Negocjacje</option>
+        <option value="mediacja">Mediacja</option>
+        <option value="rozprawa">Rozprawa</option>
+        <option value="burza_mozgow">Burza mózgów</option>
+        <option value="inne">Inne</option>
+      </select>
+      <input type="text" id="d-mode-custom" placeholder="Np. przesłuchanie, seminarium, konsultacja" style="display:none;margin-top:8px">
+    </div>
+    <div class="slot s1">
+      <div class="slot-title">⚔ Agent 1</div>
+      <div class="slot-grid">
+        <select id="d-agent1" class="slot-span-2">
+          {% for a in agents %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+        </select>
+        <div class="toggle slot-span-2">
+          <input type="radio" id="d-p1-oa" name="prov1" value="openai" checked>
+          <label for="d-p1-oa">OpenAI</label>
+          <input type="radio" id="d-p1-an" name="prov1" value="anthropic">
+          <label for="d-p1-an">Anthropic</label>
+        </div>
+        <select id="d-model1" class="slot-span-2"></select>
+        <select id="d-think1">
+          <option value="">thinking: off</option>
+          <option value="auto">auto</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="low">low</option>
+        </select>
+        <select id="d-maxtok1">
+          <option value="512">512</option>
+          <option value="1024">1024</option>
+          <option value="2048">2048</option>
+          <option value="4096" selected>4k</option>
+          <option value="8192">8k</option>
+          <option value="12288">12k</option>
+          <option value="32768">32k</option>
+          <option value="max">max</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="slot s2">
+      <div class="slot-title">⚔ Agent 2</div>
+      <div class="slot-grid">
+        <select id="d-agent2" class="slot-span-2">
+          {% for a in agents %}<option value="{{ a }}"{% if loop.index == 2 %} selected{% endif %}>{{ a }}</option>{% endfor %}
+        </select>
+        <div class="toggle slot-span-2">
+          <input type="radio" id="d-p2-oa" name="prov2" value="openai" checked>
+          <label for="d-p2-oa">OpenAI</label>
+          <input type="radio" id="d-p2-an" name="prov2" value="anthropic">
+          <label for="d-p2-an">Anthropic</label>
+        </div>
+        <select id="d-model2" class="slot-span-2"></select>
+        <select id="d-think2">
+          <option value="">thinking: off</option>
+          <option value="auto">auto</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+          <option value="low">low</option>
+        </select>
+        <select id="d-maxtok2">
+          <option value="512">512</option>
+          <option value="1024">1024</option>
+          <option value="2048">2048</option>
+          <option value="4096" selected>4k</option>
+          <option value="8192">8k</option>
+          <option value="12288">12k</option>
+          <option value="32768">32k</option>
+          <option value="max">max</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="label">Temat debaty</div>
+      <textarea id="d-topic" placeholder="Czym jest prawda?" rows="6"></textarea>
+    </div>
+    
+    <div class="field">
+      <div class="label">Maks. wymian</div>
+      <input type="number" id="d-turns" value="10" min="2" max="32" >
+    </div>
+    <div class="debate-actions">
+      <button class="btn-start" id="btn-start-debate" onclick="startDebate()">▶ Rozpocznij debatę</button>
+      <button class="btn-continue" id="btn-continue-debate" onclick="continueDebate()" style="display:none">↻ Kontynuuj</button>
+      <button class="btn-stop" id="btn-stop-debate" onclick="stopDebate()" style="display:none">■ Zatrzymaj</button>
+    </div>
+  </div>
+
+  <button class="btn-reset" onclick="resetStoredSettings()">Reset ustawień modeli</button>
+</aside>
+
+<!-- ─── Main ─────────────────────────────────────── -->
+<main class="main">
+  <div class="prog-row" id="prog-row" style="display:none">
+    <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+    <span class="prog-label" id="prog-label">0 / 10</span>
+  </div>
+
+  <div class="main-grid" id="main-grid">
+    <section class="transcript-pane">
+      <div class="messages" id="messages">
+        <div class="empty" id="empty">
+          <div class="empty-title">POD-EXP</div>
+          <div class="empty-sub">Wybierz agenta i zadaj pytanie</div>
+        </div>
+      </div>
+
+      <div class="input-area" id="input-area">
+        <div class="input-row">
+          <textarea id="input" placeholder="Napisz wiadomość…" rows="1"
+            onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+          <button class="btn-send" id="btn-send" title="Wyślij" onclick="send()">↑</button>
+        </div>
+        <div class="hint">Enter — wyślij &nbsp;·&nbsp; Shift+Enter — nowa linia</div>
+      </div>
+    </section>
+
+    <aside class="notes-pane" id="notes-pane">
+      <div class="notes-header">
+        <div class="notes-title">Szybkie notatki</div>
+        <div class="notes-subtitle" id="notes-subtitle">Aktualizowane po każdej turze debaty</div>
+      </div>
+      <div class="notes-body" id="notes-body">
+        <div class="notes-empty" id="notes-empty">Po prawej pojawi się skrót sporu, argumenty i fiszki.</div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script>const MODELS = {{ models | tojson }};</script>
+<script src="/static/analysis.js"></script>
+<script src="/static/index.js"></script>
+</body>
+</html>

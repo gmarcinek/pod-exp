@@ -1,0 +1,108 @@
+/* POD-EXP — debate view page styles */
+body {
+    min-height: 100vh;
+}
+
+/* ── Header ──────────────────────────────────── */
+.hdr {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-wrap: wrap;
+}
+
+.hdr-logo {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.hdr-agents {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.agent-pill {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.agent-pill.a1 {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(124, 106, 247, .1);
+}
+
+.agent-pill.a2 {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: rgba(61, 185, 140, .1);
+}
+
+.vs {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.hdr-topic {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-style: italic;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hdr-back {
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    flex-shrink: 0;
+    transition: border-color .15s;
+}
+
+.hdr-back:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ── Meta bar ────────────────────────────────── */
+.meta-bar {
+    display: flex;
+    gap: 20px;
+    padding: 10px 28px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+}
+
+.meta-bar span b {
+    color: var(--text-dim);
+}
+
+/* ── Messages ────────────────────────────────── */
+.messages {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}

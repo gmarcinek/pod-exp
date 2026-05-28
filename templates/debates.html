@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>POD-EXP — Archiwum debat</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0f;--surface:#141417;--surface2:#1c1c21;--surface3:#232329;
+  --border:#2a2a32;--accent:#7c6af7;--accent-dim:#5044b8;
+  --text:#e8e8f0;--text-dim:#8888a0;--text-muted:#55556a;
+  --accent2:#3db98c;--radius:12px;
+}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+a{color:inherit;text-decoration:none}
+
+/* ── Header ── */
+.hdr{display:flex;align-items:center;gap:18px;padding:18px 28px;border-bottom:1px solid var(--border);background:var(--surface)}
+.hdr-logo{font-size:16px;font-weight:800;letter-spacing:.05em;color:var(--accent)}
+.hdr-sub{font-size:13px;color:var(--text-dim)}
+.hdr-back{margin-left:auto;font-size:12px;color:var(--text-dim);padding:6px 14px;border:1px solid var(--border);border-radius:8px;transition:border-color .15s}
+.hdr-back:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── Content ── */
+.content{max-width:900px;margin:0 auto;padding:32px 24px}
+.page-title{font-size:22px;font-weight:700;margin-bottom:6px}
+.page-sub{font-size:13px;color:var(--text-dim);margin-bottom:28px}
+
+/* ── Empty ── */
+.empty-state{text-align:center;padding:80px 24px;color:var(--text-muted)}
+.empty-state .icon{font-size:48px;margin-bottom:16px}
+.empty-state p{font-size:14px}
+
+/* ── Debate card ── */
+.debate-list{display:flex;flex-direction:column;gap:12px}
+.debate-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:18px 20px;display:flex;flex-direction:column;gap:10px;
+  transition:border-color .15s,background .15s;cursor:pointer;
+}
+.debate-card:hover{border-color:var(--accent);background:var(--surface2)}
+.card-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.vs-wrap{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.agent-pill{font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px;border:1px solid;white-space:nowrap}
+.agent-pill.a1{color:var(--accent);border-color:var(--accent);background:rgba(124,106,247,.1)}
+.agent-pill.a2{color:var(--accent2);border-color:var(--accent2);background:rgba(61,185,140,.1)}
+.vs{font-size:11px;font-weight:700;color:var(--text-muted);flex-shrink:0}
+.card-meta{font-size:11px;color:var(--text-muted);margin-left:auto;white-space:nowrap}
+.card-topic{font-size:14px;color:var(--text-dim);font-style:italic}
+.card-footer{display:flex;gap:16px;font-size:11px;color:var(--text-muted)}
+.card-footer span{display:flex;align-items:center;gap:4px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-logo">POD-EXP</div>
+  <div class="hdr-sub">Archiwum debat epistemicznych</div>
+  <a href="/" class="hdr-back">← Powrót do chatu</a>
+</div>
+
+<div class="content">
+  <div class="page-title">Odbyте debaty</div>
+  <div class="page-sub">Kliknij debatę żeby zobaczyć pełny transkrypt.</div>
+
+  {% if debates %}
+  <div class="debate-list">
+    {% for d in debates %}
+    <a href="/debates/{{ d.id }}" class="debate-card">
+      <div class="card-top">
+        <div class="vs-wrap">
+          <span class="agent-pill a1">{{ d.agent1 }}</span>
+          <span class="vs">VS</span>
+          <span class="agent-pill a2">{{ d.agent2 }}</span>
+        </div>
+        <div class="card-meta">{{ d.timestamp[:10] if d.timestamp else '' }} &nbsp; {{ d.timestamp[11:16] if d.timestamp|length > 15 else '' }} UTC</div>
+      </div>
+      <div class="card-topic">„{{ d.topic }}"</div>
+      <div class="card-footer">
+        <span>💬 {{ d.turns }} wymian</span>
+        <span>🤖 {{ d.model1 }}</span>
+        {% if d.model2 != d.model1 %}<span>🤖 {{ d.model2 }}</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="icon">🗂</div>
+    <p>Brak zapisanych debat.<br>Uruchom pierwszą debatę w trybie ⚔ Debata.</p>
+  </div>
+  {% endif %}
+</div>
+
+</body>
+</html>

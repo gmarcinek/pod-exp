@@ -1,0 +1,41 @@
+﻿<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>POD-EXP — {{ debate.agent1 }} vs {{ debate.agent2 }}</title>
+<link rel="stylesheet" href="/static/pod.css">
+<link rel="stylesheet" href="/static/view.css">
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-logo">POD-EXP</div>
+  <div class="hdr-agents">
+    <span class="agent-pill a1">{{ debate.agent1 }}</span>
+    <span class="vs">VS</span>
+    <span class="agent-pill a2">{{ debate.agent2 }}</span>
+  </div>
+  <div class="hdr-topic">„{{ debate.topic }}"</div>
+  <a href="/debates" class="hdr-back">← Archiwum</a>
+</div>
+
+<div class="meta-bar">
+  <span>📅 <b>{{ debate.timestamp[:10] if debate.timestamp else '—' }}</b> {{ debate.timestamp[11:16] if debate.timestamp|length > 15 else '' }} UTC</span>
+  <span>💬 <b>{{ debate.transcript|length }}</b> wymian</span>
+  <span>🤖 A1: <b>{{ debate.model1 }}</b>{% if debate.thinking_effort1 %} · thinking: {{ debate.thinking_effort1 }}{% endif %}</span>
+  <span>🤖 A2: <b>{{ debate.model2 }}</b>{% if debate.thinking_effort2 %} · thinking: {{ debate.thinking_effort2 }}{% endif %}</span>
+</div>
+
+<div class="messages" id="messages"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script>
+const debate = {{ debate | tojson }};
+const a1 = debate.agent1;
+const a2 = debate.agent2;
+</script>
+<script src="/static/analysis.js"></script>
+<script src="/static/view.js"></script>
+</body>
+</html>

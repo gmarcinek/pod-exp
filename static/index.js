@@ -1,7 +1,7 @@
 /* POD-EXP — index page script */
 // MODELS is injected inline by the template: const MODELS = {{ models | tojson }};
 
-const THINKING_MODELS = new Set(['gpt-5.4', 'gpt-5.5']);
+const THINKING_MODELS = new Set(['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-5.5-mini']);
 const STORAGE_KEYS = {
   chat: 'pod-exp.chat-settings',
   debate: 'pod-exp.debate-settings',

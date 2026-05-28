@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ page_title }}</title>
+    {% for css_url in frontend_css_urls %}
+    <link rel="stylesheet" href="{{ css_url }}" />
+    {% endfor %}
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      window.__POD_EXP_BOOTSTRAP__ = {{ bootstrap_payload | tojson }};
+    </script>
+    <script type="module" src="{{ frontend_script_url }}"></script>
+  </body>
+  </html>

@@ -1,0 +1,168 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text-dim);
+}
+
+.field select,
+.field textarea,
+.field input,
+.slotGrid select,
+.slotGrid input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font-size: 13.5px;
+  font-family: inherit;
+  transition: border-color .15s;
+}
+
+.field select,
+.slotGrid select {
+  padding-right: 36px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%236e6e80' d='M5 7L1 3h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.field select:focus,
+.field textarea:focus,
+.field input:focus,
+.slotGrid select:focus,
+.slotGrid input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field textarea::placeholder,
+.field input::placeholder {
+  color: var(--text-dim);
+}
+
+.slot {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slotTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.slotOne .slotTitle {
+  color: var(--accent);
+}
+
+.slotTwo .slotTitle {
+  color: var(--accent2);
+}
+
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.slotSpan2 {
+  grid-column: 1 / -1;
+}
+
+.toggle {
+  display: flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.toggle input[type="radio"] {
+  display: none;
+}
+
+.toggle label {
+  flex: 1;
+  text-align: center;
+  padding: 9px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+  transition: background .15s, color .15s;
+}
+
+.toggle input[type="radio"]:checked + label {
+  background: var(--accent);
+  color: #fff;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.startButton,
+.continueButton,
+.stopButton {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.startButton {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  transition: background .15s;
+}
+
+.startButton:hover {
+  background: var(--accent-dim);
+}
+
+.startButton:disabled,
+.continueButton:disabled {
+  background: var(--surface3);
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.continueButton {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.stopButton {
+  background: transparent;
+  border: 1px solid var(--err-border);
+  color: var(--err-text);
+}

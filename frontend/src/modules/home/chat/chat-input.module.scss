@@ -1,0 +1,73 @@
+.inputArea {
+  padding: 14px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--border-soft);
+}
+
+.inputRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.inputRow textarea {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: none;
+  min-height: 44px;
+  max-height: 180px;
+  overflow-y: auto;
+  transition: border-color .15s;
+}
+
+.inputRow textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.inputRow textarea::placeholder {
+  color: var(--text-dim);
+}
+
+.sendButton {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, transform .1s;
+}
+
+.sendButton:hover {
+  background: var(--accent-dim);
+}
+
+.sendButton:active {
+  transform: scale(.94);
+}
+
+.sendButton:disabled {
+  background: var(--surface3);
+  cursor: default;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 7px;
+}

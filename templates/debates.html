@@ -57,7 +57,7 @@ a{color:inherit;text-decoration:none}
 <div class="hdr">
   <div class="hdr-logo">POD-EXP</div>
   <div class="hdr-sub">Archiwum debat epistemicznych</div>
-  <a href="/" class="hdr-back">← Powrót do chatu</a>
+  <a href="{{ legacy_base_path }}/" class="hdr-back">← Powrót do chatu</a>
 </div>
 
 <div class="content">
@@ -67,7 +67,7 @@ a{color:inherit;text-decoration:none}
   {% if debates %}
   <div class="debate-list">
     {% for d in debates %}
-    <a href="/debates/{{ d.id }}" class="debate-card">
+    <a href="{{ legacy_base_path }}/debates/{{ d.id }}" class="debate-card">
       <div class="card-top">
         <div class="vs-wrap">
           <span class="agent-pill a1">{{ d.agent1 }}</span>

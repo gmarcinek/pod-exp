@@ -18,7 +18,7 @@ from pathlib import Path
 import anthropic
 import openai
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory, stream_with_context
 
 load_dotenv()
 
@@ -36,10 +36,17 @@ from client import (  # noqa: E402
 app = Flask(__name__)
 
 DEBATES_DIR = Path(__file__).parent / "debates"
+FRONTEND_DIR = Path(__file__).parent / "frontend"
+FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
+FRONTEND_MANIFEST_PATH = FRONTEND_DIST_DIR / ".vite" / "manifest.json"
+FRONTEND_ENTRY_KEY = "index.html"
+FRONTEND_ASSETS_URL_PREFIX = "/frontend-assets"
+FRONTEND_PREVIEW_PREFIX = "/_react-preview"
+FRONTEND_LEGACY_PREFIX = "/_legacy"
 
 MODELS: dict[str, list[str]] = {
-    "openai": ["gpt-5.4", "gpt-5.5"],
-    "anthropic": ["claude-opus-4-6"],
+    "openai": ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.5-mini"],
+    "anthropic": ["claude-opus-4-6", "claude-3-5-haiku-latest"],
 }
 
 LIVE_NOTES_MODEL = "gpt-5.4-mini"
@@ -54,6 +61,128 @@ PROVIDER_MAX_TOKENS = {
     "openai": 128000,
     "anthropic": 32000,
 }
+
+
+def _list_agents() -> list[str]:
+    return sorted(p.stem for p in AGENTS_DIR.glob("*.json") if not p.stem.startswith("_"))
+
+
+def _load_debates_index() -> list[dict]:
+    files = sorted(DEBATES_DIR.glob("*.json"), reverse=True) if DEBATES_DIR.exists() else []
+    debates = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            debates.append({
+                "id": data["id"],
+                "timestamp": data.get("timestamp", ""),
+                "agent1": data["agent1"],
+                "agent2": data["agent2"],
+                "topic": data.get("topic", ""),
+                "turns": len(data.get("transcript", [])),
+                "model1": data.get("model1", ""),
+                "model2": data.get("model2", ""),
+            })
+        except Exception:
+            pass
+    return debates
+
+
+def _load_debate_record(debate_id: str) -> dict | None:
+    safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", debate_id)
+    path = DEBATES_DIR / f"{safe_id}.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _build_home_bootstrap_payload(*, app_base_path: str = "") -> dict:
+    return {
+        "route": "home",
+        "apiBaseUrl": request.script_root or "",
+        "appBasePath": app_base_path,
+        "initialData": {
+            "agents": _list_agents(),
+            "models": MODELS,
+        },
+    }
+
+
+def _build_debates_bootstrap_payload(*, app_base_path: str = "") -> dict:
+    return {
+        "route": "debates",
+        "apiBaseUrl": request.script_root or "",
+        "appBasePath": app_base_path,
+        "initialData": {
+            "debates": _load_debates_index(),
+        },
+    }
+
+
+def _build_debate_view_bootstrap_payload(debate_id: str, *, app_base_path: str = "") -> dict | None:
+    debate = _load_debate_record(debate_id)
+    if debate is None:
+        return None
+    return {
+        "route": "debate-view",
+        "apiBaseUrl": request.script_root or "",
+        "appBasePath": app_base_path,
+        "initialData": {
+            "debate": debate,
+        },
+    }
+
+
+def _load_frontend_manifest() -> dict:
+    if not FRONTEND_MANIFEST_PATH.exists():
+        raise FileNotFoundError(
+            "Brak manifestu frontendu. Uruchom `npm.cmd run build` w katalogu frontend."
+        )
+
+    return json.loads(FRONTEND_MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def _get_frontend_entry_assets() -> dict:
+    manifest = _load_frontend_manifest()
+    entry = manifest.get(FRONTEND_ENTRY_KEY)
+    if not isinstance(entry, dict):
+        raise KeyError(f"Brak entry `{FRONTEND_ENTRY_KEY}` w manifeście frontendu.")
+
+    script_file = entry.get("file")
+    if not isinstance(script_file, str) or not script_file:
+        raise KeyError("Manifest frontendu nie zawiera pliku JS dla entrypointu.")
+
+    css_files = entry.get("css")
+    if not isinstance(css_files, list):
+        css_files = []
+
+    return {
+        "script_url": f"{FRONTEND_ASSETS_URL_PREFIX}/{script_file}",
+        "css_urls": [f"{FRONTEND_ASSETS_URL_PREFIX}/{css_file}" for css_file in css_files if isinstance(css_file, str)],
+    }
+
+
+def _render_frontend_shell(*, bootstrap_payload: dict, title: str) -> str:
+    try:
+        assets = _get_frontend_entry_assets()
+    except (FileNotFoundError, KeyError, json.JSONDecodeError) as exc:
+        abort(503, description=str(exc))
+
+    return render_template(
+        "react_shell.html",
+        page_title=title,
+        bootstrap_payload=bootstrap_payload,
+        frontend_script_url=assets["script_url"],
+        frontend_css_urls=assets["css_urls"],
+    )
+
+
+def _render_legacy_template(template_name: str, **context) -> str:
+    return render_template(
+        template_name,
+        legacy_base_path=FRONTEND_LEGACY_PREFIX,
+        **context,
+    )
 
 
 def _empty_live_notes(topic: str) -> dict:
@@ -164,10 +293,9 @@ def _generate_live_fact_requests(topic: str, transcript: list[dict]) -> list[str
         f"Temat debaty: {topic}\n"
         f"Najnowszy wpis:\n- {latest['agent']}: {_clip_text(latest['content'])}\n\n"
         f"Ostatnie wymiany:\n{recent_lines}\n\n"
-        "Wypisz 2-3 krótkie prośby o fakty do sprawdzenia po tej turze. "
+        "Wypisz krótkie 1-5 prośby o fakty do sprawdzenia po tej turze. "
         "Każda linia ma być jedną konkretną rzeczą do weryfikacji. "
-        "Pisz po polsku. Zaczynaj od czasownika, np. 'Sprawdź, czy...' lub 'Ustal, czy...'. "
-        "Zwróć wyłącznie 2-3 osobne linie, bez numeracji, bez wstępu, bez JSON."
+        "Zwróć wyłącznie 2-10 osobne linie, bez numeracji, bez wstępu, bez JSON."
     )
 
     last_error = None
@@ -258,13 +386,39 @@ def _update_live_notes(topic: str, transcript: list[dict], previous_notes: dict)
 
 @app.route("/")
 def index():
-    agents = sorted(p.stem for p in AGENTS_DIR.glob("*.json") if not p.stem.startswith("_"))
-    return render_template("index.html", agents=agents, models=MODELS)
+    return _render_frontend_shell(
+        bootstrap_payload=_build_home_bootstrap_payload(),
+        title="POD-EXP",
+    )
 
 
 @app.route("/api/agents")
 def get_agents():
-    return jsonify(sorted(p.stem for p in AGENTS_DIR.glob("*.json") if not p.stem.startswith("_")))
+    return jsonify(_list_agents())
+
+
+@app.route("/api/bootstrap/home")
+def get_home_bootstrap():
+    return jsonify(_build_home_bootstrap_payload())
+
+
+@app.route("/api/bootstrap/debates")
+def get_debates_bootstrap():
+    return jsonify(_build_debates_bootstrap_payload())
+
+
+@app.route("/api/bootstrap/debates/<debate_id>")
+def get_debate_view_bootstrap(debate_id: str):
+    bootstrap_payload = _build_debate_view_bootstrap_payload(debate_id)
+    if bootstrap_payload is None:
+        return jsonify({"error": "Nie znaleziono debaty."}), 404
+
+    return jsonify(bootstrap_payload)
+
+
+@app.route(f"{FRONTEND_ASSETS_URL_PREFIX}/<path:asset_path>")
+def frontend_assets(asset_path: str):
+    return send_from_directory(FRONTEND_DIST_DIR, asset_path)
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -832,34 +986,71 @@ def debate():
 
 @app.route("/debates")
 def debates_list():
-    files = sorted(DEBATES_DIR.glob("*.json"), reverse=True) if DEBATES_DIR.exists() else []
-    debates = []
-    for f in files:
-        try:
-            d = json.loads(f.read_text(encoding="utf-8"))
-            debates.append({
-                "id": d["id"],
-                "timestamp": d.get("timestamp", ""),
-                "agent1": d["agent1"],
-                "agent2": d["agent2"],
-                "topic": d.get("topic", ""),
-                "turns": len(d.get("transcript", [])),
-                "model1": d.get("model1", ""),
-                "model2": d.get("model2", ""),
-            })
-        except Exception:
-            pass
-    return render_template("debates.html", debates=debates)
+    return _render_frontend_shell(
+        bootstrap_payload=_build_debates_bootstrap_payload(),
+        title="POD-EXP - Archiwum debat",
+    )
 
 
 @app.route("/debates/<debate_id>")
 def debate_view(debate_id: str):
-    safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", debate_id)
-    path = DEBATES_DIR / f"{safe_id}.json"
-    if not path.exists():
+    bootstrap_payload = _build_debate_view_bootstrap_payload(debate_id)
+    if bootstrap_payload is None:
         return "Nie znaleziono debaty.", 404
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return render_template("debate_view.html", debate=data)
+    debate = bootstrap_payload["initialData"]["debate"]
+    return _render_frontend_shell(
+        bootstrap_payload=bootstrap_payload,
+        title=f"POD-EXP - {debate['agent1']} vs {debate['agent2']}",
+    )
+
+
+@app.route(FRONTEND_LEGACY_PREFIX)
+def legacy_index():
+    return _render_legacy_template("index.html", agents=_list_agents(), models=MODELS)
+
+
+@app.route(f"{FRONTEND_LEGACY_PREFIX}/debates")
+def legacy_debates_list():
+    return _render_legacy_template("debates.html", debates=_load_debates_index())
+
+
+@app.route(f"{FRONTEND_LEGACY_PREFIX}/debates/<debate_id>")
+def legacy_debate_view(debate_id: str):
+    data = _load_debate_record(debate_id)
+    if data is None:
+        return "Nie znaleziono debaty.", 404
+    return _render_legacy_template("debate_view.html", debate=data)
+
+
+@app.route(FRONTEND_PREVIEW_PREFIX)
+def frontend_preview_home():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_home_bootstrap_payload(app_base_path=FRONTEND_PREVIEW_PREFIX),
+        title="POD-EXP React Preview",
+    )
+
+
+@app.route(f"{FRONTEND_PREVIEW_PREFIX}/debates")
+def frontend_preview_debates():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_debates_bootstrap_payload(app_base_path=FRONTEND_PREVIEW_PREFIX),
+        title="POD-EXP React Preview - Debates",
+    )
+
+
+@app.route(f"{FRONTEND_PREVIEW_PREFIX}/debates/<debate_id>")
+def frontend_preview_debate_view(debate_id: str):
+    bootstrap_payload = _build_debate_view_bootstrap_payload(
+        debate_id,
+        app_base_path=FRONTEND_PREVIEW_PREFIX,
+    )
+    if bootstrap_payload is None:
+        return "Nie znaleziono debaty.", 404
+
+    return _render_frontend_shell(
+        bootstrap_payload=bootstrap_payload,
+        title="POD-EXP React Preview - Debate View",
+    )
 
 
 if __name__ == "__main__":

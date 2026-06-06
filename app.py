@@ -27,6 +27,7 @@ from client import (  # noqa: E402
     AGENTS_DIR,
     ANTHROPIC_MODEL,
     OPENAI_MODEL,
+    OPENAI_MODEL_GPT55,
     build_system_prompt,
     call_anthropic_messages,
     call_openai_messages,
@@ -187,16 +188,28 @@ def _load_debates_index() -> list[dict]:
     for f in files:
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            debates.append({
+            record_type = str(data.get("type") or "debate")
+            topic = str(data.get("topic") or "").strip()
+            summary = str(data.get("summary") or "").strip()
+            snippet_src = summary or topic
+            snippet = (snippet_src[:200] + "…") if len(snippet_src) > 200 else snippet_src
+            entry: dict = {
                 "id": data["id"],
                 "timestamp": data.get("timestamp", ""),
-                "agent1": data["agent1"],
-                "agent2": data["agent2"],
-                "topic": data.get("topic", ""),
+                "type": record_type,
+                "topic": topic,
                 "turns": len(data.get("transcript", [])),
-                "model1": data.get("model1", ""),
-                "model2": data.get("model2", ""),
-            })
+                "snippet": snippet,
+                # kept for backward compat
+                "agent1": str(data.get("agent1") or ""),
+                "agent2": str(data.get("agent2") or ""),
+                "model1": str(data.get("model1") or data.get("model") or ""),
+                "model2": str(data.get("model2") or ""),
+                "agents": list(data.get("agents") or [
+                    a for a in [data.get("agent1"), data.get("agent2")] if a
+                ]),
+            }
+            debates.append(entry)
         except Exception:
             pass
     return debates
@@ -1119,12 +1132,12 @@ def _run_debate(data: dict):
         try:
             if p1 == "openai":
                 analysis_iter = _stream_openai(
-                    analyser_sys, analyser_msgs, m1, None,
+                    analyser_sys, analyser_msgs, OPENAI_MODEL_GPT55, None,
                     response_format={"type": "json_object"},
                 )
             else:
                 analysis_iter = _stream_anthropic(
-                    analyser_sys, analyser_msgs, m1, None,
+                    analyser_sys, analyser_msgs, OPENAI_MODEL_GPT55, None,
                     prefill="{",
                 )
 
@@ -1186,9 +1199,9 @@ def _run_debate(data: dict):
 
     try:
         if p1 == "openai":
-            summary_iter = _stream_openai(summariser_sys, summariser_msgs, m1, None)
+            summary_iter = _stream_openai(summariser_sys, summariser_msgs, OPENAI_MODEL_GPT55, None)
         else:
-            summary_iter = _stream_anthropic(summariser_sys, summariser_msgs, m1, None)
+            summary_iter = _stream_anthropic(summariser_sys, summariser_msgs, OPENAI_MODEL_GPT55, None)
 
         for ev in summary_iter:
             if ev["type"] == "thinking":
@@ -1226,6 +1239,349 @@ def _run_debate(data: dict):
     }
 
 
+
+# ── Federation ───────────────────────────────────────────────────────────────
+
+FEDERATION_MARSHAL_SYSTEM = """Jesteś Marszałkiem Sejmu Epistemicznego. Moderujesz wieloagentową debatę i masz własny głos jako gospodarz. Masz osobowość, temperament i własny osąd — nie jesteś neutralnym moderatorem, lecz aktywnym uczestnikiem z władzą.
+
+ZASADY ROUTINGU:
+1. Routujesz PO STANIE ROZMOWY — nie tylko po profilu agenta. Za każdym razem pytaj: czego teraz potrzebuje ta rozmowa?
+2. Wykrywaj: niezakwestionowane założenia, otwarte pytania skierowane do konkretnego agenta, sygnały wyczerpania, momenty gdy ktoś właśnie odsłonił ślepą plamę.
+3. Agent może dostać głos DRUGI RAZ Z RZĘDU jeśli właśnie był zaczepiony i musi odpowiedzieć — to najproduktywniejsza jednostka dialogu.
+4. Kontra to NIE "temat pasujący do agenta B" — to "agent A właśnie odsłonił coś, co agent B akurat widzi lepiej".
+5. Dodawaj nowych agentów ostrożnie — tylko gdy wniosą perspektywę nieobecną w aktywnych głosach.
+6. Możesz sam zabrać głos jako marszałek: zadać pytanie, sformułować napięcie, nazwać przesilenie, zaproponować ramę, wyrazić własną ocenę.
+7. Kończ gdy cel osiągnięty LUB gdy dalsze rundy nie wniosą niczego nieoczywistego.
+
+CEL I DRYF:
+8. Masz ZAWSZE przed oczami CEL podany w promptcie (pole CEL). To jest kompas — nie dekoracja.
+9. Dozwolony dryf: jeśli rozmowa schodzi na wątek boczny, ale wątek jest odkrywczy i prowadzi do celu okrężną drogą — pozwól na to. Ciekawa dygresja to nie dryf.
+10. Niedozwolony dryf: jałowe powtarzanie ogólników, filozoficzne okrążanie bez posuwania tematu, gadanie obok celu przez 3-4 wymiany. Licz wymiany poza celem w state_assessment (np. "dryf: 3 tury").
+11. Po 3-4 wymianach dryfu użyj action="marshal" i ostro zawróć rozmowę: nazwij dokładnie gdzie się zapędziła i wskaż konkretny nierozwiązany wątek z oryginalnego celu. Np.: "Zatrzymuję — od 4 tur kręcimy się wokół słownika zamiast problemu. Wracamy: [konkretne pytanie z celu]."
+12. Jeśli po interwencji marszałka rozmowa znów dryfuje — zawróć szybciej (po 2 wymianach) i rozważ zakończenie jeśli postęp jest niemożliwy.
+
+DYSCYPLINA I POWTARZALNOŚĆ:
+13. Wykrywaj powtarzanie: porównaj ostatnią wypowiedź agenta z jego wcześniejszymi. Jeśli agent odtwarza te same tezy słowo w słowo lub bez nowego argumentu — to naruszenie porządku obrad.
+14. Gdy wykryjesz powtórzenie, użyj action="marshal" z marshal_text wzywającym agenta do porządku — krótko, ostro, po imieniu (np. "Budda — to już padło. Albo posuniesz temat, albo oddaję głos komuś innemu."). Następnym krokiem daj temu agentowi JEDNĄ szansę z dyrektywą zakazującą powtarzania, albo natychmiast przejdź do innego uczestnika.
+15. Jeśli ten sam agent powtarza się po raz trzeci — wyklucz go z dalszych tur tego posiedzenia (nie routuj do niego) i zaznacz to jako marszałek.
+
+ZAKOŃCZENIE I WYCZERPANIE TEMATU:
+16. Możesz w każdej chwili uznać, że debata wyczerpała temat i dała odpowiedź — to Twoja prerogatywa. Nie czekaj na limit kroków, jeśli naprawdę wszystko zostało powiedziane. W closing sformułuj syntezę: co ustalono, gdzie pozostało napięcie, jaka odpowiedź wyłoniła się z debaty.
+17. Możesz też zakończyć gdy debata krąży bez nowych punktów widzenia — nawet jeśli temat formalnie nierozwiązany. Zaznacz to: "Debata osiągnęła plateau — kolejne rundy nie przyniosą nowej mapy terenu."
+18. Zakończenie to nie porażka. Dobre zakończenie w połowie limitu kroków jest lepsze niż ciągnięcie jałowej sesji.
+
+TEMPERAMENT I STYL PROWADZENIA:
+19. Możesz zmieniać tryb prowadzenia w zależności od tego, czego potrzebuje rozmowa:
+    - USPOKAJANIE: gdy emocje przesłaniają argumenty — zwolnij, poproś o precyzję, nazwij napięcie bez eskalacji
+    - DOLEWANIE BENZYNY: gdy rozmowa jest zbyt grzeczna i omija sedno — prowokuj, konfrontuj agentów z konsekwencjami ich tez, stawiaj ostre pytania
+    - ZMIANA RAMY: gdy dyskusja utknęła — zaproponuj inny poziom analizy, inne pytanie, zmień perspektywę
+    - SYNTEZA CZĘŚCIOWA: gdy wątek się zamknął — podsumuj go zwięźle i otwórz następny
+20. Możesz dać się przekonać przez argumenty agentów — jeśli argument jest mocny, powiedz to wprost. Możesz też trwać przy swoim osądzie i uzasadnić dlaczego. Nie jesteś lustrem — masz własne zdanie.
+21. Cokolwiek robisz — zawsze wracasz do roli marszałka. Możesz się wzruszyć, ironizować, pochwalić, skarcić, ale finałem każdej Twojej wypowiedzi jest gest prowadzącego: decyzja, pytanie, routing lub zamknięcie.
+
+ZAWSZE odpowiadaj wyłącznie czystym JSON (bez markdown, bez komentarzy):
+{
+  "state_assessment": "1-2 zdania: co właśnie zaszło i czego potrzebuje rozmowa TERAZ",
+  "action": "speak" | "marshal" | "end",
+  "agent": "nazwa-pliku-agenta-bez-.json",
+  "directive": "konkretna instrukcja dla agenta: co ma zrobić, do czego się odnieść, jaką ślepą plamę wskazać",
+  "marshal_text": "tekst marszałka (gdy action=marshal lub jako komentarz między turami)",
+  "closing": "tekst zamknięcia (gdy action=end)"
+}
+Pola nieużywane dla danego action mogą być pominięte lub null."""
+
+FEDERATION_AGENT_MODEL = "gpt-5.4"
+FEDERATION_MAX_TRANSCRIPT_TURNS = 6
+
+
+def _list_agents_with_descriptions() -> list[dict]:
+    agents = []
+    for path in sorted(AGENTS_DIR.glob("*.json")):
+        if path.stem.startswith("_"):
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            identity = data.get("agent_identity", {})
+            agents.append({
+                "name": path.stem,
+                "short_name": str(identity.get("short_name") or path.stem),
+                "designation": str(identity.get("designation") or path.stem),
+                "federation_description": str(data.get("federation_description") or ""),
+            })
+        except Exception:
+            pass
+    return agents
+
+
+def _run_marshal_decision(
+    topic: str,
+    goal: str,
+    agent_manifest: list[dict],
+    transcript: list[dict],
+    active_agents: list[str],
+) -> dict:
+    manifest_text = "\n".join(
+        f"- {a['name']} ({a['short_name']}): {a['federation_description']}"
+        for a in agent_manifest
+    )
+    active_text = ", ".join(active_agents) if active_agents else "brak"
+
+    if transcript:
+        recent = transcript[-FEDERATION_MAX_TRANSCRIPT_TURNS:]
+        older_count = len(transcript) - len(recent)
+        transcript_text = f"[...{older_count} wcześniejszych tur pominięto...]\n\n" if older_count > 0 else ""
+        for t in recent:
+            transcript_text += f"### {t['agent']}\n{t['content']}\n\n"
+    else:
+        transcript_text = "[Debata jeszcze się nie rozpoczęła]"
+
+    user_msg = (
+        f"TEMAT: {topic}\n\n"
+        f"CEL: {goal}\n\n"
+        f"AKTYWNI AGENCI (ci którzy już mówili): {active_text}\n\n"
+        f"DOSTĘPNI AGENCI:\n{manifest_text}\n\n"
+        f"TRANSKRYPT:\n{transcript_text}\n"
+        "Podejmij decyzję marszałka."
+    )
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    response = openai.OpenAI(api_key=api_key).chat.completions.create(
+        model=OPENAI_MODEL_GPT55,
+        messages=[
+            {"role": "system", "content": FEDERATION_MARSHAL_SYSTEM},
+            {"role": "user", "content": user_msg},
+        ],
+        response_format={"type": "json_object"},
+    )
+    raw = (response.choices[0].message.content or "{}").strip()
+    return json.loads(raw)
+
+
+def _run_federation(data: dict):
+    topic = str(data.get("topic") or "").strip() or "Czym jest prawda?"
+    goal = "Przeprowadź wieloagentową debatę epistemiczną. Zbadaj temat z różnych perspektyw, dopuść kontry i korekty."
+    extra_data = str(data.get("data") or "").strip()
+    agent_model = str(data.get("model") or FEDERATION_AGENT_MODEL).strip()
+    max_tokens = _resolve_turn_max_tokens(data.get("max_tokens") or "4096", "openai")
+    max_steps = min(int(data.get("max_steps") or 20), 40)
+
+    effective_topic = f"{topic}\n\nDodatkowe dane:\n{extra_data}" if extra_data else topic
+
+    federation_id = _generate_debate_id()
+    started_at = datetime.now(timezone.utc).isoformat()
+
+    agent_manifest = _list_agents_with_descriptions()
+    transcript: list[dict] = []
+    active_agents: list[str] = []
+    agent_histories: dict[str, list[dict]] = {}
+    live_notes = _empty_live_notes(topic)
+
+    yield {"type": "federation_start", "topic": topic, "goal": goal, "total_steps": max_steps}
+
+    ended_naturally = False
+
+    for step in range(max_steps):
+        try:
+            decision = _run_marshal_decision(effective_topic, goal, agent_manifest, transcript, active_agents)
+        except Exception as e:
+            yield {"type": "error", "message": f"Marszałek: {e}"}
+            break
+
+        action = str(decision.get("action") or "end")
+        state_assessment = str(decision.get("state_assessment") or "").strip()
+        marshal_text = str(decision.get("marshal_text") or "").strip()
+
+        if state_assessment:
+            yield {"type": "marshal_assessment", "text": state_assessment, "step": step + 1, "total": max_steps}
+
+        if action == "end":
+            closing = str(decision.get("closing") or "Debata zakończona.").strip()
+            if closing:
+                yield {"type": "marshal_text_start", "step": step + 1}
+                yield {"type": "marshal_text", "delta": closing, "step": step + 1}
+                yield {"type": "marshal_text_end", "step": step + 1}
+            ended_naturally = True
+            break
+
+        if action == "marshal":
+            if marshal_text:
+                yield {"type": "marshal_text_start", "step": step + 1}
+                yield {"type": "marshal_text", "delta": marshal_text, "step": step + 1}
+                yield {"type": "marshal_text_end", "step": step + 1}
+            continue
+
+        if action == "speak":
+            agent_name = str(decision.get("agent") or "").strip()
+            directive = str(decision.get("directive") or "Zabierz głos zgodnie ze swoim profilem.").strip()
+
+            if not agent_name:
+                yield {"type": "error", "message": "Marszałek nie wskazał agenta."}
+                continue
+
+            try:
+                profile = load_agent(agent_name)
+            except FileNotFoundError:
+                yield {"type": "error", "message": f"Agent '{agent_name}' nie istnieje — marszałek wskazał nieznany profil."}
+                continue
+
+            identity = profile.get("agent_identity", {})
+            short_name = str(identity.get("short_name") or agent_name)
+            designation = str(identity.get("designation") or agent_name)
+
+            is_new = agent_name not in active_agents
+            if is_new:
+                active_agents.append(agent_name)
+                yield {"type": "agent_joined", "agent": agent_name, "short_name": short_name, "designation": designation, "step": step + 1}
+
+            if marshal_text:
+                yield {"type": "marshal_text_start", "step": step + 1}
+                yield {"type": "marshal_text", "delta": marshal_text, "step": step + 1}
+                yield {"type": "marshal_text_end", "step": step + 1}
+
+            sys_prompt = build_system_prompt(profile)
+            other_active = [a for a in active_agents if a != agent_name]
+            sys_prompt += (
+                f"\n\nUczestniczysz w wieloagentowej debacie federacyjnej."
+                f"\nTemat: \"{topic}\"."
+                f"\nCel debaty: {goal}."
+                f"\nTwoja tożsamość: {designation} ({short_name})."
+                f"\nInni aktywni uczestnicy: {', '.join(other_active) or 'brak'}."
+                f"\nMARSZAŁEK UDZIELIŁ CI GŁOSU Z DYREKTYWĄ: {directive}"
+                f"\nBądź konkretny, reaguj na to co padło. Maksymalnie 3-4 akapity."
+            )
+
+            if agent_name not in agent_histories:
+                if transcript:
+                    context_lines = "\n\n".join(
+                        f"{t['agent']}: {t['content']}"
+                        for t in transcript[-FEDERATION_MAX_TRANSCRIPT_TURNS:]
+                    )
+                    first_msg = f"Kontekst debaty (ostatnie tury):\n{context_lines}\n\nDyrektywa marszałka: {directive}"
+                else:
+                    first_msg = f"Dyrektywa marszałka: {directive}"
+                agent_histories[agent_name] = [{"role": "user", "content": first_msg}]
+            else:
+                turns_since_last = []
+                for t in reversed(transcript):
+                    if t["agent"] == agent_name:
+                        break
+                    turns_since_last.insert(0, t)
+                context = "\n\n".join(f"{t['agent']}: {t['content']}" for t in turns_since_last) if turns_since_last else ""
+                follow_up = (f"{context}\n\n" if context else "") + f"Dyrektywa marszałka: {directive}"
+                agent_histories[agent_name].append({"role": "user", "content": follow_up})
+
+            yield {"type": "turn_start", "agent": agent_name, "short_name": short_name, "step": step + 1, "total": max_steps}
+
+            full = ""
+            turn_thinking = ""
+            try:
+                for ev in _stream_openai(sys_prompt, agent_histories[agent_name], agent_model, None, max_tokens=max_tokens):
+                    if ev["type"] == "thinking":
+                        turn_thinking += ev["delta"]
+                        yield {"type": "thinking", "agent": agent_name, "delta": ev["delta"]}
+                    elif ev["type"] == "text":
+                        full += ev["delta"]
+                        yield {"type": "text", "agent": agent_name, "delta": ev["delta"]}
+                    elif ev["type"] == "done":
+                        full = ev.get("content", full)
+            except Exception as e:
+                yield {"type": "error", "message": f"Agent {agent_name}: {e}"}
+                break
+
+            agent_histories[agent_name].append({"role": "assistant", "content": full})
+            transcript.append({
+                "agent": agent_name,
+                "short_name": short_name,
+                "content": full,
+                "thinking": turn_thinking,
+                "step": step + 1,
+            })
+
+            try:
+                live_notes = _update_live_notes(topic, transcript, live_notes)
+                yield {"type": "live_notes", "turn": len(transcript), "data": live_notes}
+            except Exception as e:
+                yield {"type": "live_notes_error", "message": str(e), "turn": len(transcript)}
+
+            yield {"type": "turn_end", "agent": agent_name, "short_name": short_name, "step": step + 1, "total": max_steps}
+            continue
+
+        yield {"type": "error", "message": f"Nieznana akcja marszałka: {action}"}
+
+    # ── Summary ──────────────────────────────────────────────────────────────
+    summary_text = ""
+    if transcript:
+        yield {"type": "summary_start"}
+        summariser_profile = load_tool("_sumariser")
+        summariser_sys = build_system_prompt(summariser_profile)
+        tx_lines = [f"[krok {t['step']}] {t['agent'].upper()}: {t['content']}" for t in transcript]
+        tx = "\n\n".join(tx_lines)
+        notes_json = json.dumps(live_notes, ensure_ascii=False, indent=2)
+        participants = ", ".join(dict.fromkeys(t["agent"] for t in transcript))
+        summariser_msg = (
+            f"Temat: \"{topic}\"\n"
+            f"Uczestnicy: {participants}\n"
+            f"Liczba kroków: {len(transcript)}\n\n"
+            f"=== TRANSKRYPT ===\n{tx}\n\n"
+            f"=== ANALIZA KARTOGRAFA (tekst) ===\n[brak — federacja]\n\n"
+            f"=== ANALIZA KARTOGRAFA (json) ===\nnull\n\n"
+            f"=== SZYBKIE NOTATKI I FISZKI ===\n{notes_json}"
+        )
+        summariser_msgs = [{"role": "user", "content": summariser_msg}]
+        try:
+            for ev in _stream_openai(summariser_sys, summariser_msgs, OPENAI_MODEL_GPT55, None):
+                if ev["type"] == "text":
+                    summary_text += ev["delta"]
+                    yield {"type": "summary_text", "delta": ev["delta"]}
+        except Exception as e:
+            yield {"type": "summary_error", "message": str(e)}
+        yield {"type": "summary_done"}
+
+    # ── Save to history ───────────────────────────────────────────────────────
+    try:
+        _write_debate_snapshot({
+            "id": federation_id,
+            "timestamp": started_at,
+            "type": "federation",
+            "topic": topic,
+            "agents": active_agents,
+            "agent1": active_agents[0] if active_agents else "",
+            "agent2": active_agents[1] if len(active_agents) > 1 else "",
+            "model": agent_model,
+            "model1": agent_model,
+            "model2": "",
+            "transcript": transcript,
+            "live_notes": live_notes,
+            "summary": summary_text,
+            "total_steps": len(transcript),
+        })
+    except Exception:
+        pass
+
+    total = len(transcript)
+    yield {"type": "federation_end", "total_steps": total, "ended_naturally": ended_naturally, "id": federation_id}
+
+
+
+@app.route("/api/federation", methods=["POST"])
+def federation():
+    data = request.get_json(force=True)
+
+    def generate():
+        try:
+            for event in _run_federation(data):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+        yield 'data: {"type":"stream_end"}\n\n'
+
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.route("/api/debate", methods=["POST"])
 def debate():
     data = request.get_json(force=True)
@@ -1253,6 +1609,221 @@ def debates_list():
         bootstrap_payload=_build_debates_bootstrap_payload(),
         title="POD-EXP - Archiwum debat",
     )
+
+
+@app.route("/federation")
+def federation_page():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_bootstrap_payload(
+            route="federation",
+            initial_data={"agents": _list_agents(), "models": MODELS.get("openai", [])},
+        ),
+        title="POD-EXP - Federacja",
+    )
+
+
+def _build_federation_view_bootstrap_payload(federation_id: str) -> dict | None:
+    record = _load_debate_record(federation_id)
+    if record is None or str(record.get("type") or "") != "federation":
+        return None
+    transcript = list(record.get("transcript") or [])
+    return _build_bootstrap_payload(
+        route="federation-view",
+        initial_data={
+            "record": {
+                "id": str(record.get("id") or ""),
+                "timestamp": str(record.get("timestamp") or ""),
+                "topic": str(record.get("topic") or ""),
+                "agents": list(record.get("agents") or []),
+                "model": str(record.get("model") or record.get("model1") or ""),
+                "transcript": transcript,
+                "live_notes": record.get("live_notes"),
+                "summary": str(record.get("summary") or ""),
+                "total_steps": int(record.get("total_steps") or len(transcript)),
+            },
+        },
+    )
+
+
+@app.route("/federation/<federation_id>")
+def federation_saved_view(federation_id: str):
+    payload = _build_federation_view_bootstrap_payload(federation_id)
+    if payload is None:
+        from flask import redirect
+        return redirect("/debates")
+    return _render_frontend_shell(bootstrap_payload=payload, title="POD-EXP - Federacja")
+
+
+@app.route("/api/bootstrap/federation/<federation_id>")
+def get_federation_view_bootstrap(federation_id: str):
+    payload = _build_federation_view_bootstrap_payload(federation_id)
+    if payload is None:
+        return jsonify({"error": "Nie znaleziono sesji federacji."}), 404
+    return jsonify(payload)
+
+
+# ── Agents ────────────────────────────────────────────────────────────────────
+
+AGENT_GENERATION_SYSTEM = """Generujesz pełny profil agenta epistemicznego w formacie JSON. Pisz wyłącznie po polsku. Zwróć WYŁĄCZNIE czysty JSON, bez markdown, bez komentarzy.
+Wypełnij WSZYSTKIE pola schematu. Jeśli użytkownik nie podał szczegółów do jakiegoś pola — wygeneruj je sam, spójnie z całym profilem agenta.
+
+SCHEMAT (wszystkie pola obowiązkowe):
+{
+  "profile_version": "1.0.0",
+  "profile_type": "epistemic_agent_config",
+  "language": "pl",
+  "federation_description": "2 zdania: czym jest agent + zdanie z 'Aktywuj gdy...' opisujące kiedy go wezwać w debacie wieloagentowej",
+  "agent_identity": {
+    "designation": "np. 'Agent kartezjański'",
+    "short_name": "SKRÓT MAX 12 ZNAKÓW WIELKIE LITERY",
+    "narrative_identity": "Kim jesteś w pierwszej osobie — 3-5 zdań",
+    "role_in_experiment": "Co reprezentujesz epistemicznie — 1-2 zdania",
+    "temperament": ["lista", "2-7", "cech", "charakteru"]
+  },
+  "ontology": {
+    "world_assumption": "Jak rozumiesz naturę rzeczywistości — 2-3 zdania",
+    "admitted_entities": ["lista 3-8 encji które uznajesz za realne"],
+    "conditionally_admitted_entities": ["0-3 encje warunkowo dopuszczane"],
+    "rejected_defaults": ["lista 2-6 rzeczy które odrzucasz"],
+    "entity_visibility_policy": "zdanie o tym co jest najbardziej realne poznawczo"
+  },
+  "epistemology": {
+    "knowledge_sources": ["lista 3-6 źródeł wiedzy"],
+    "source_prioritization": ["lista 2-5 priorytetów"],
+    "disallowed_shortcuts": ["lista 2-5 niedozwolonych skrótów myślowych"],
+    "epistemic_posture": "zdanie o postawie epistemicznej"
+  },
+  "truth_criterion": {
+    "definition": "zdanie o tym co jest prawdą dla tego agenta",
+    "acceptance_layers": ["lista 2-5 warunków akceptacji"],
+    "rejection_conditions": ["lista 2-4 warunków odrzucenia"]
+  },
+  "cognitive_dynamics": {
+    "attractors": [{"name": "...", "description": "..."}, {"name": "...", "description": "..."}],
+    "bifurcators": [{"trigger": "...", "effect": "..."}, {"trigger": "...", "effect": "..."}],
+    "stability_rules": ["lista 2-4 zasad stabilności poznawczej"]
+  },
+  "base_beliefs": [
+    {"belief": "...", "confidence": "high", "revision_condition": "..."},
+    {"belief": "...", "confidence": "medium", "revision_condition": "..."},
+    {"belief": "...", "confidence": "low", "revision_condition": "..."}
+  ]
+}"""
+
+
+def _list_agents_with_summaries() -> list[dict]:
+    agents = []
+    for path in sorted(AGENTS_DIR.glob("*.json")):
+        if path.stem.startswith("_"):
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            identity = data.get("agent_identity", {})
+            ontology = data.get("ontology", {})
+            truth = data.get("truth_criterion", {})
+            agents.append({
+                "name": path.stem,
+                "short_name": str(identity.get("short_name") or path.stem),
+                "designation": str(identity.get("designation") or path.stem),
+                "federation_description": str(data.get("federation_description") or ""),
+                "temperament": list(identity.get("temperament") or []),
+                "language": str(data.get("language") or "pl"),
+                "world_assumption": str(ontology.get("world_assumption") or ""),
+                "narrative_identity": str(identity.get("narrative_identity") or ""),
+                "truth_definition": str(truth.get("definition") or ""),
+            })
+        except Exception:
+            pass
+    return agents
+
+
+def _sanitize_agent_filename(name: str) -> str:
+    import unicodedata
+    nfkd = unicodedata.normalize("NFKD", name.lower().strip())
+    ascii_str = nfkd.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_str).strip("-")
+    return slug or "nowy-agent"
+
+
+@app.route("/agents")
+def agents_view():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_bootstrap_payload(
+            route="agents",
+            initial_data={"agents": _list_agents_with_summaries()},
+        ),
+        title="POD-EXP - Agenci",
+    )
+
+
+@app.route("/api/bootstrap/agents")
+def get_agents_bootstrap():
+    return jsonify(_build_bootstrap_payload(
+        route="agents",
+        initial_data={"agents": _list_agents_with_summaries()},
+    ))
+
+
+@app.route("/api/agents/create", methods=["POST"])
+def create_agent():
+    data = request.get_json(force=True)
+
+    designation = str(data.get("designation") or "").strip()
+    short_name = str(data.get("short_name") or "").strip().upper()[:12]
+    filename = _sanitize_agent_filename(str(data.get("filename") or designation))
+    narrative = str(data.get("narrative_identity") or "").strip()
+    world = str(data.get("world_assumption") or "").strip()
+    knowledge = str(data.get("knowledge_sources") or "").strip()
+    truth = str(data.get("truth_criterion") or "").strip()
+    rejected = str(data.get("rejected_defaults") or "").strip()
+    temperament = str(data.get("temperament") or "").strip()
+    federation_desc = str(data.get("federation_description") or "").strip()
+
+    if not designation or not filename:
+        return jsonify({"error": "Brak nazwy agenta."}), 400
+
+    target_path = AGENTS_DIR / f"{filename}.json"
+    if target_path.exists():
+        return jsonify({"error": f"Agent '{filename}' już istnieje."}), 409
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "Brak OPENAI_API_KEY."}), 500
+
+    user_msg = (
+        f"Stwórz pełny profil agenta epistemicznego na podstawie poniższych danych:\n\n"
+        f"NAZWA / DESIGNATION: {designation}\n"
+        f"SHORT_NAME: {short_name or designation.upper()[:12]}\n"
+        f"TOŻSAMOŚĆ NARRACYJNA (kim jesteś): {narrative or '[wygeneruj sam]'}\n"
+        f"ZAŁOŻENIE O ŚWIECIE: {world or '[wygeneruj sam]'}\n"
+        f"ŹRÓDŁA WIEDZY / EPISTEMOLOGIA: {knowledge or '[wygeneruj sam]'}\n"
+        f"KRYTERIUM PRAWDY: {truth or '[wygeneruj sam]'}\n"
+        f"ODRZUCANE ZAŁOŻENIA: {rejected or '[wygeneruj sam]'}\n"
+        f"TEMPERAMENT: {temperament or '[wygeneruj sam]'}\n"
+        f"OPIS FEDERACYJNY: {federation_desc or '[wygeneruj sam]'}\n"
+    )
+
+    try:
+        response = openai.OpenAI(api_key=api_key).chat.completions.create(
+            model=OPENAI_MODEL_GPT55,
+            messages=[
+                {"role": "system", "content": AGENT_GENERATION_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            response_format={"type": "json_object"},
+        )
+        raw = (response.choices[0].message.content or "{}").strip()
+        profile = json.loads(raw)
+    except Exception as e:
+        return jsonify({"error": f"Błąd generowania profilu: {e}"}), 502
+
+    AGENTS_DIR.mkdir(exist_ok=True)
+    target_path.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    summary = _list_agents_with_summaries()
+    agent_summary = next((a for a in summary if a["name"] == filename), None)
+
+    return jsonify({"name": filename, "agent": agent_summary})
 
 
 @app.route("/newDebate")

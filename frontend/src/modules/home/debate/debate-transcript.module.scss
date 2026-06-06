@@ -66,6 +66,7 @@
   flex-direction: column;
   gap: 6px;
   max-width: 80%;
+  min-width: 0;
   animation: fadeUp .2s ease both;
 }
 
@@ -132,6 +133,8 @@
   line-height: 1.65;
   border: 1px solid;
   word-break: break-word;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .slotOne .entryBubble {
@@ -185,6 +188,9 @@
   padding: 12px;
   border-radius: 9px;
   overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
   margin: .5em 0;
 }
 

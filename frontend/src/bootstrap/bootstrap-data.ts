@@ -11,6 +11,12 @@ import type {
   DebateTranscriptEntry,
   DebatesBootstrapData,
   DebateViewBootstrapData,
+  FederationBootstrapData,
+  FederationViewBootstrapData,
+  FederationViewRecord,
+  FederationViewTurn,
+  AgentsBootstrapData,
+  AgentSummary,
   HomeBootstrapData,
   ModelCatalog,
   NewDebateBootstrapData,
@@ -62,7 +68,9 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function readAnalysisData(value: unknown): DebateAnalysisData | null | undefined {
+function readAnalysisData(
+  value: unknown,
+): DebateAnalysisData | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -78,7 +86,9 @@ function readConfigData(value: unknown): DebateConfigData | null | undefined {
   return isRecord(value) ? value : null;
 }
 
-function readLiveNotesData(value: unknown): DebateLiveNotesData | null | undefined {
+function readLiveNotesData(
+  value: unknown,
+): DebateLiveNotesData | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -87,7 +97,9 @@ function readLiveNotesData(value: unknown): DebateLiveNotesData | null | undefin
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
 }
 
 function isModelCatalog(value: unknown): value is ModelCatalog {
@@ -154,7 +166,15 @@ function isDebateRecord(value: unknown): value is DebateRecord {
 }
 
 function parseRoute(value: unknown): BootstrapRoute {
-  if (value === "home" || value === "debates" || value === "debate-view" || value === "new-debate") {
+  if (
+    value === "home" ||
+    value === "debates" ||
+    value === "debate-view" ||
+    value === "new-debate" ||
+    value === "federation" ||
+    value === "federation-view" ||
+    value === "agents"
+  ) {
     return value;
   }
 
@@ -163,7 +183,9 @@ function parseRoute(value: unknown): BootstrapRoute {
 
 function normalizePathname(pathname: string): string {
   const withoutSuffix = pathname.split("?")[0]?.split("#")[0] ?? "";
-  const normalized = withoutSuffix.startsWith("/") ? withoutSuffix : `/${withoutSuffix}`;
+  const normalized = withoutSuffix.startsWith("/")
+    ? withoutSuffix
+    : `/${withoutSuffix}`;
 
   if (!normalized || normalized === "/") {
     return "/";
@@ -207,7 +229,9 @@ function parseHomeData(value: unknown): HomeBootstrapData {
   return {
     agents: isStringArray(value.agents) ? value.agents : [],
     models: isModelCatalog(value.models) ? value.models : {},
-    debates: Array.isArray(value.debates) ? value.debates.filter(isDebateListItem) : [],
+    debates: Array.isArray(value.debates)
+      ? value.debates.filter(isDebateListItem)
+      : [],
   };
 }
 
@@ -247,7 +271,9 @@ function isDebateSetupData(value: unknown): value is DebateSetupData {
   );
 }
 
-function readDebateSetupData(value: unknown): DebateSetupData | null | undefined {
+function readDebateSetupData(
+  value: unknown,
+): DebateSetupData | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -313,13 +339,52 @@ function createDefaultPayload(route: BootstrapRoute): BootstrapPayload {
         appBasePath: "",
         initialData: { agents: [], models: {}, debate: createFallbackDebate() },
       };
+    case "federation":
+      return {
+        route,
+        apiBaseUrl: "",
+        appBasePath: "",
+        initialData: {
+          agents: [],
+          models: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.5-mini"],
+        },
+      };
+    case "federation-view":
+      return {
+        route,
+        apiBaseUrl: "",
+        appBasePath: "",
+        initialData: {
+          record: {
+            id: "",
+            timestamp: "",
+            topic: "",
+            agents: [],
+            model: "",
+            transcript: [],
+            live_notes: null,
+            summary: "",
+            total_steps: 0,
+          },
+        },
+      };
+    case "agents":
+      return {
+        route,
+        apiBaseUrl: "",
+        appBasePath: "",
+        initialData: { agents: [] as AgentSummary[] },
+      };
     case "home":
     default:
       return defaultPayload;
   }
 }
 
-export function getBootstrapRouteFromPathname(pathname: string, appBasePath = ""): BootstrapRoute {
+export function getBootstrapRouteFromPathname(
+  pathname: string,
+  appBasePath = "",
+): BootstrapRoute {
   const routePath = stripAppBasePath(pathname, appBasePath);
 
   if (routePath === "/newDebate") {
@@ -334,10 +399,25 @@ export function getBootstrapRouteFromPathname(pathname: string, appBasePath = ""
     return "debate-view";
   }
 
+  if (routePath === "/federation") {
+    return "federation";
+  }
+
+  if (routePath.startsWith("/federation/")) {
+    return "federation-view";
+  }
+
+  if (routePath === "/agents") {
+    return "agents";
+  }
+
   return "home";
 }
 
-export function getDebateIdFromPathname(pathname: string, appBasePath = ""): string | null {
+export function getDebateIdFromPathname(
+  pathname: string,
+  appBasePath = "",
+): string | null {
   const routePath = stripAppBasePath(pathname, appBasePath);
 
   const routePrefixes = ["/debate/", "/debates/"];
@@ -353,6 +433,17 @@ export function getDebateIdFromPathname(pathname: string, appBasePath = ""): str
   }
 
   return null;
+}
+
+export function getFederationIdFromPathname(
+  pathname: string,
+  appBasePath = "",
+): string | null {
+  const routePath = stripAppBasePath(pathname, appBasePath);
+  const prefix = "/federation/";
+  if (!routePath.startsWith(prefix)) return null;
+  const id = routePath.slice(prefix.length).split("/")[0] ?? "";
+  return id ? decodeURIComponent(id) : null;
 }
 
 function parseDebateRecord(value: DebateRecord): DebateRecord {
@@ -374,9 +465,19 @@ function parseDebateRecord(value: DebateRecord): DebateRecord {
     topic: readString(value.topic),
     config: readConfigData(value.config),
     setup: readDebateSetupData(value.setup),
-    history1: Array.isArray(value.history1) ? value.history1.filter(isHistoryMessage).map((entry) => ({ role: entry.role, content: entry.content })) : [],
-    history2: Array.isArray(value.history2) ? value.history2.filter(isHistoryMessage).map((entry) => ({ role: entry.role, content: entry.content })) : [],
-    transcript: value.transcript.map(parseTranscriptEntry).filter((entry): entry is DebateTranscriptEntry => entry !== null),
+    history1: Array.isArray(value.history1)
+      ? value.history1
+          .filter(isHistoryMessage)
+          .map((entry) => ({ role: entry.role, content: entry.content }))
+      : [],
+    history2: Array.isArray(value.history2)
+      ? value.history2
+          .filter(isHistoryMessage)
+          .map((entry) => ({ role: entry.role, content: entry.content }))
+      : [],
+    transcript: value.transcript
+      .map(parseTranscriptEntry)
+      .filter((entry): entry is DebateTranscriptEntry => entry !== null),
     live_notes: readLiveNotesData(value.live_notes),
     analysis: readOptionalString(value.analysis),
     analysis_json: readAnalysisData(value.analysis_json),
@@ -399,7 +500,6 @@ function parseDebateViewData(value: unknown): DebateViewBootstrapData {
 }
 
 export function parseBootstrapPayload(payload: unknown): BootstrapPayload {
-
   if (!isRecord(payload)) {
     return defaultPayload;
   }
@@ -430,6 +530,59 @@ export function parseBootstrapPayload(payload: unknown): BootstrapPayload {
         appBasePath,
         initialData: parseDebateViewData(payload.initialData),
       };
+    case "federation": {
+      const fd = payload.initialData;
+      const federationData: FederationBootstrapData = {
+        agents:
+          isRecord(fd) && isStringArray((fd as Record<string, unknown>).agents)
+            ? ((fd as Record<string, unknown>).agents as string[])
+            : [],
+        models:
+          isRecord(fd) && isStringArray((fd as Record<string, unknown>).models)
+            ? ((fd as Record<string, unknown>).models as string[])
+            : [],
+      };
+      return { route, apiBaseUrl, appBasePath, initialData: federationData };
+    }
+    case "federation-view": {
+      const fv = payload.initialData;
+      const rawRecord = isRecord(fv) ? (fv as Record<string, unknown>).record : undefined;
+      const rec = isRecord(rawRecord) ? rawRecord : {};
+      const transcript: FederationViewTurn[] = Array.isArray(rec.transcript)
+        ? (rec.transcript as unknown[])
+            .filter(isRecord)
+            .map((t) => ({
+              agent: typeof t.agent === "string" ? t.agent : "",
+              short_name: typeof t.short_name === "string" ? t.short_name : "",
+              content: typeof t.content === "string" ? t.content : "",
+              step: typeof t.step === "number" ? t.step : 0,
+              thinking: typeof t.thinking === "string" ? t.thinking : undefined,
+            }))
+        : [];
+      const fvRecord: FederationViewRecord = {
+        id: typeof rec.id === "string" ? rec.id : "",
+        timestamp: typeof rec.timestamp === "string" ? rec.timestamp : "",
+        topic: typeof rec.topic === "string" ? rec.topic : "",
+        agents: isStringArray(rec.agents) ? rec.agents : [],
+        model: typeof rec.model === "string" ? rec.model : "",
+        transcript,
+        live_notes: isRecord(rec.live_notes) ? rec.live_notes : null,
+        summary: typeof rec.summary === "string" ? rec.summary : "",
+        total_steps: typeof rec.total_steps === "number" ? rec.total_steps : transcript.length,
+      };
+      const fvData: FederationViewBootstrapData = { record: fvRecord };
+      return { route, apiBaseUrl, appBasePath, initialData: fvData };
+    }
+    case "agents": {
+      const ad = payload.initialData;
+      const agentsData: AgentsBootstrapData = {
+        agents:
+          isRecord(ad) && Array.isArray((ad as Record<string, unknown>).agents)
+            ? ((ad as Record<string, unknown>).agents as AgentSummary[])
+            : [],
+      };
+      return { route, apiBaseUrl, appBasePath, initialData: agentsData };
+    }
     case "home":
     default:
       return {
@@ -447,7 +600,10 @@ function getCurrentBootstrapPayload(): BootstrapPayload | null {
   }
 
   const payload = parseBootstrapPayload(window.__POD_EXP_BOOTSTRAP__);
-  const expectedRoute = getBootstrapRouteFromPathname(window.location.pathname, payload.appBasePath);
+  const expectedRoute = getBootstrapRouteFromPathname(
+    window.location.pathname,
+    payload.appBasePath,
+  );
 
   return payload.route === expectedRoute ? payload : null;
 }
@@ -459,7 +615,9 @@ export function getBootstrapData(): BootstrapPayload {
     return payload;
   }
 
-  return createDefaultPayload(getBootstrapRouteFromPathname(window.location.pathname));
+  return createDefaultPayload(
+    getBootstrapRouteFromPathname(window.location.pathname),
+  );
 }
 
 export function hasBootstrapPayload(): boolean {

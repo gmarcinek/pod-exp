@@ -7,12 +7,20 @@ type AppSurfaceProps = PropsWithChildren<{
   currentRoute: BootstrapRoute;
 }>;
 
-const navigationItems: Array<{ href: string; label: string; route: BootstrapRoute }> = [
+const navigationItems: Array<{
+  href: string;
+  label: string;
+  route: BootstrapRoute;
+}> = [
   { href: buildAppPath("/"), label: "Start", route: "home" },
   { href: buildAppPath("/debates"), label: "Debates", route: "debates" },
 ];
 
-export function AppSurface({ apiBaseUrl, currentRoute, children }: AppSurfaceProps) {
+export function AppSurface({
+  apiBaseUrl,
+  currentRoute,
+  children,
+}: AppSurfaceProps) {
   if (currentRoute === "home") {
     return (
       <div className="app-shell app-shell--home" data-api-base-url={apiBaseUrl}>
@@ -21,9 +29,19 @@ export function AppSurface({ apiBaseUrl, currentRoute, children }: AppSurfacePro
     );
   }
 
-  if (currentRoute === "debates" || currentRoute === "debate-view" || currentRoute === "new-debate") {
+  if (
+    currentRoute === "debates" ||
+    currentRoute === "debate-view" ||
+    currentRoute === "new-debate" ||
+    currentRoute === "federation" ||
+    currentRoute === "federation-view" ||
+    currentRoute === "agents"
+  ) {
     return (
-      <div className="app-shell app-shell--plain" data-api-base-url={apiBaseUrl}>
+      <div
+        className="app-shell app-shell--plain"
+        data-api-base-url={apiBaseUrl}
+      >
         {children}
       </div>
     );
@@ -37,7 +55,8 @@ export function AppSurface({ apiBaseUrl, currentRoute, children }: AppSurfacePro
             <p className="app-shell__eyebrow">POD-EXP frontend</p>
             <h1 className="app-shell__title">React bootstrap layer</h1>
             <p className="app-shell__copy">
-              Wspólna baza wizualna korzysta już z tokenów i dark theme starego UI, ale pełne migracje ekranów pozostają w kolejnych taskach.
+              Wspólna baza wizualna korzysta już z tokenów i dark theme starego
+              UI, ale pełne migracje ekranów pozostają w kolejnych taskach.
             </p>
           </div>
           <nav className="app-shell__nav" aria-label="Primary">

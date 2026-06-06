@@ -13,6 +13,95 @@ function formatTimestamp(timestamp: string) {
   return `${date} \u00a0 ${time} UTC`;
 }
 
+const FEDERATION_COLORS = [
+  "#7c6af7",
+  "#3db98c",
+  "#e0b840",
+  "#e07060",
+  "#60a8e0",
+  "#c060e0",
+  "#e09040",
+];
+
+function DebateCard({ debate }: { debate: DebateListItem }) {
+  const isFederation = debate.type === "federation";
+  const href = isFederation
+    ? buildAppPath(`/federation/${debate.id}`)
+    : buildAppPath(`/debate/${debate.id}`);
+
+  if (isFederation) {
+    const agents = debate.agents ?? [];
+    return (
+      <a
+        href={href}
+        className={`${styles.debateCard} ${styles.federationCard}`}
+      >
+        <div className={styles.cardTop}>
+          <div className={styles.federationWrap}>
+            <span className={styles.federationBadge}>🏛 FEDERACJA</span>
+            <div className={styles.federationAgents}>
+              {agents.map((a, i) => (
+                <span
+                  key={a}
+                  className={styles.federationPill}
+                  style={{
+                    color: FEDERATION_COLORS[i % FEDERATION_COLORS.length],
+                    borderColor:
+                      FEDERATION_COLORS[i % FEDERATION_COLORS.length],
+                  }}
+                >
+                  {a}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className={styles.cardMeta}>
+            {formatTimestamp(debate.timestamp)}
+          </div>
+        </div>
+        <div className={styles.cardTopic}>„{debate.topic}"</div>
+        {debate.snippet && (
+          <div className={styles.cardSnippet}>{debate.snippet}</div>
+        )}
+        <div className={styles.cardFooter}>
+          <span>💬 {debate.turns} kroków</span>
+          {debate.model1 && <span>🤖 {debate.model1}</span>}
+        </div>
+      </a>
+    );
+  }
+
+  return (
+    <a href={href} className={styles.debateCard}>
+      <div className={styles.cardTop}>
+        <div className={styles.vsWrap}>
+          <span className={`${styles.agentPill} ${styles.agentPillA1}`}>
+            {debate.agent1}
+          </span>
+          <span className={styles.vs}>VS</span>
+          <span className={`${styles.agentPill} ${styles.agentPillA2}`}>
+            {debate.agent2}
+          </span>
+        </div>
+        <div className={styles.cardMeta}>
+          {formatTimestamp(debate.timestamp)}
+        </div>
+      </div>
+      <div className={styles.cardTopic}>„{debate.topic}"</div>
+      {debate.snippet && (
+        <div className={styles.cardSnippet}>{debate.snippet}</div>
+      )}
+      <div className={styles.cardFooter}>
+        <span>💬 {debate.turns} wymian</span>
+        <span>🤖 {debate.model1}</span>
+        {debate.model2 !== debate.model1 ? (
+          <span>🤖 {debate.model2}</span>
+        ) : null}
+      </div>
+    </a>
+  );
+}
+
 export function ArchivePage({ debates }: ArchivePageProps) {
   return (
     <div className={styles.page}>
@@ -26,7 +115,10 @@ export function ArchivePage({ debates }: ArchivePageProps) {
 
       <main className={styles.content}>
         <h1 className={styles.title}>Odbyte debaty</h1>
-        <p className={styles.pageSubtitle}>Kliknij debatę, żeby odtworzyć sesję i kontynuować ją z zapisanych ustawień.</p>
+        <p className={styles.pageSubtitle}>
+          Kliknij debatę, żeby odtworzyć sesję i kontynuować ją z zapisanych
+          ustawień.
+        </p>
 
         {debates.length === 0 ? (
           <div className={styles.emptyState}>
@@ -40,22 +132,7 @@ export function ArchivePage({ debates }: ArchivePageProps) {
         ) : (
           <div className={styles.debateList}>
             {debates.map((debate) => (
-              <a key={debate.id} href={buildAppPath(`/debate/${debate.id}`)} className={styles.debateCard}>
-                <div className={styles.cardTop}>
-                  <div className={styles.vsWrap}>
-                    <span className={`${styles.agentPill} ${styles.agentPillA1}`}>{debate.agent1}</span>
-                    <span className={styles.vs}>VS</span>
-                    <span className={`${styles.agentPill} ${styles.agentPillA2}`}>{debate.agent2}</span>
-                  </div>
-                  <div className={styles.cardMeta}>{formatTimestamp(debate.timestamp)}</div>
-                </div>
-                <div className={styles.cardTopic}>„{debate.topic}"</div>
-                <div className={styles.cardFooter}>
-                  <span>💬 {debate.turns} wymian</span>
-                  <span>🤖 {debate.model1}</span>
-                  {debate.model2 !== debate.model1 ? <span>🤖 {debate.model2}</span> : null}
-                </div>
-              </a>
+              <DebateCard key={debate.id} debate={debate} />
             ))}
           </div>
         )}

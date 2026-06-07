@@ -1,15 +1,18 @@
 """
-POD-EXP client – łączy się z OpenAI (gpt-4.5) i Anthropic (claude-opus-4-6).
+POD-EXP client – łączy się z OpenAI, Anthropic i Ollama.
 Ładuje profile aktorów z agents/*.json i narzędzi z tools/*.json,
 i buduje z nich system prompt.
 
 Użycie:
     python client.py --agent kalwinizm --provider openai  --message "Czym jest prawda?"
     python client.py --agent redukcjonizm --provider anthropic --message "Co to jest świadomość?"
+    python client.py --agent fizyk --provider ollama --message "Co to jest świadomość?"
 
 Zmienne środowiskowe:
     OPENAI_API_KEY    – klucz API OpenAI
     ANTHROPIC_API_KEY – klucz API Anthropic
+    OLLAMA_BASE_URL   – bazowy URL Ollama (domyślnie: http://localhost:11434/v1)
+    OLLAMA_MODELS     – lista modeli Ollama oddzielona przecinkami (opcjonalnie)
 """
 
 from __future__ import annotations
@@ -43,6 +46,9 @@ OPENAI_THINKING_MODELS: frozenset[str] = frozenset({
     OPENAI_MODEL_GPT55,
     OPENAI_MODEL_GPT55_MINI,
 })
+
+OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434/v1"
+OLLAMA_DEFAULT_MODELS = ["llama3.2", "llama3.1:8b", "mistral", "qwen2.5"]
 
 AGENTS_DIR = Path(__file__).parent / "agents"
 TOOLS_DIR = Path(__file__).parent / "tools"
@@ -219,9 +225,30 @@ def call_anthropic(
     return block.text if hasattr(block, "text") else str(block)
 
 
+# ── Ollama ───────────────────────────────────────────────────────────────────
+
+def call_ollama_messages(
+    system_prompt: str,
+    messages: list[dict],
+    model: str,
+    max_tokens: int | None = None,
+) -> str:
+    """Multi-turn Ollama call przez OpenAI-compatible API."""
+    base_url = os.environ.get("OLLAMA_BASE_URL", OLLAMA_DEFAULT_BASE_URL)
+    params: dict = {
+        "model": model,
+        "messages": [{"role": "system", "content": system_prompt}] + messages,
+    }
+    if max_tokens is not None:
+        params["max_tokens"] = max_tokens
+    client = openai.OpenAI(api_key="ollama", base_url=base_url)
+    resp = client.chat.completions.create(**params)
+    return resp.choices[0].message.content or ""
+
+
 # ── Główna funkcja ───────────────────────────────────────────────────────────
 
-Provider = Literal["openai", "anthropic"]
+Provider = Literal["openai", "anthropic", "ollama"]
 
 
 def ask(
@@ -231,6 +258,7 @@ def ask(
     *,
     openai_model: str = OPENAI_MODEL,
     anthropic_model: str = ANTHROPIC_MODEL,
+    ollama_model: str = OLLAMA_DEFAULT_MODELS[0],
     thinking_effort: str | None = None,
 ) -> str:
     """
@@ -239,9 +267,10 @@ def ask(
     Args:
         agent_name:      Nazwa pliku agenta (bez .json), np. "kalwinizm".
         message:         Pytanie lub treść wiadomości.
-        provider:        "openai" lub "anthropic".
+        provider:        "openai", "anthropic" lub "ollama".
         openai_model:    Nadpisanie domyślnego modelu OpenAI.
         anthropic_model: Nadpisanie domyślnego modelu Anthropic.
+        ollama_model:    Nadpisanie domyślnego modelu Ollama.
         thinking_effort: Poziom reasoning dla modeli OpenAI z myśleniem
                          ("auto", "medium", "high", "low").
                          Przy "auto" i "medium" wymusza temperature=0.
@@ -256,8 +285,10 @@ def ask(
         return call_openai(system_prompt, message, model=openai_model, thinking_effort=thinking_effort)
     elif provider == "anthropic":
         return call_anthropic(system_prompt, message, model=anthropic_model)
+    elif provider == "ollama":
+        return call_ollama_messages(system_prompt, [{"role": "user", "content": message}], model=ollama_model)
     else:
-        raise ValueError(f"Nieznany provider: '{provider}'. Użyj 'openai' lub 'anthropic'.")
+        raise ValueError(f"Nieznany provider: '{provider}'. Użyj 'openai', 'anthropic' lub 'ollama'.")
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -278,9 +309,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--provider", "-p",
-        choices=["openai", "anthropic"],
+        choices=["openai", "anthropic", "ollama"],
         default="openai",
-        help="Dostawca modelu: openai (domyślnie) lub anthropic.",
+        help="Dostawca modelu: openai (domyślnie), anthropic lub ollama.",
     )
     parser.add_argument(
         "--openai-model",
@@ -299,6 +330,11 @@ def main() -> None:
         default=ANTHROPIC_MODEL,
         choices=[ANTHROPIC_MODEL, ANTHROPIC_MODEL_HAIKU],
         help=f"Model Anthropic (domyślnie: {ANTHROPIC_MODEL}).",
+    )
+    parser.add_argument(
+        "--ollama-model",
+        default=OLLAMA_DEFAULT_MODELS[0],
+        help=f"Model Ollama (domyślnie: {OLLAMA_DEFAULT_MODELS[0]}).",
     )
     parser.add_argument(
         "--thinking-effort",
@@ -320,6 +356,7 @@ def main() -> None:
             provider=args.provider,
             openai_model=args.openai_model,
             anthropic_model=args.anthropic_model,
+            ollama_model=args.ollama_model,
             thinking_effort=args.thinking_effort,
         )
         print(response)

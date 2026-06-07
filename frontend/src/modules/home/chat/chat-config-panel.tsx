@@ -1,6 +1,9 @@
 import type { ChangeEvent } from "react";
 import type { ModelCatalog } from "../../../lib/types/bootstrap";
-import { THINKING_OPTIONS, getModelsForProvider } from "../shared/home-constants";
+import {
+  THINKING_OPTIONS,
+  getModelsForProvider,
+} from "../shared/home-constants";
 import type { ChatSettings } from "../shared/home-types";
 import styles from "./chat-config-panel.module.scss";
 
@@ -13,10 +16,20 @@ type ChatConfigPanelProps = {
   onNewChat: () => void;
 };
 
-export function ChatConfigPanel({ agents, models, settings, showThinking, onChange, onNewChat }: ChatConfigPanelProps) {
+export function ChatConfigPanel({
+  agents,
+  models,
+  settings,
+  showThinking,
+  onChange,
+  onNewChat,
+}: ChatConfigPanelProps) {
   const providerModels = getModelsForProvider(models, settings.provider);
 
-  function updateField<Key extends keyof ChatSettings>(key: Key, value: ChatSettings[Key]) {
+  function updateField<Key extends keyof ChatSettings>(
+    key: Key,
+    value: ChatSettings[Key],
+  ) {
     onChange({ ...settings, [key]: value });
   }
 
@@ -33,7 +46,10 @@ export function ChatConfigPanel({ agents, models, settings, showThinking, onChan
     <div className={styles.stack}>
       <div className={styles.field}>
         <div className={styles.label}>Agent</div>
-        <select value={settings.agent} onChange={(event) => updateField("agent", event.target.value)}>
+        <select
+          value={settings.agent}
+          onChange={(event) => updateField("agent", event.target.value)}
+        >
           {agents.map((agent) => (
             <option key={agent} value={agent}>
               {agent}
@@ -45,16 +61,42 @@ export function ChatConfigPanel({ agents, models, settings, showThinking, onChan
       <div className={styles.field}>
         <div className={styles.label}>Provider</div>
         <div className={styles.toggle}>
-          <input id="p-openai" type="radio" name="provider" value="openai" checked={settings.provider === "openai"} onChange={onProviderChange} />
+          <input
+            id="p-openai"
+            type="radio"
+            name="provider"
+            value="openai"
+            checked={settings.provider === "openai"}
+            onChange={onProviderChange}
+          />
           <label htmlFor="p-openai">OpenAI</label>
-          <input id="p-anthropic" type="radio" name="provider" value="anthropic" checked={settings.provider === "anthropic"} onChange={onProviderChange} />
+          <input
+            id="p-anthropic"
+            type="radio"
+            name="provider"
+            value="anthropic"
+            checked={settings.provider === "anthropic"}
+            onChange={onProviderChange}
+          />
           <label htmlFor="p-anthropic">Anthropic</label>
+          <input
+            id="p-ollama"
+            type="radio"
+            name="provider"
+            value="ollama"
+            checked={settings.provider === "ollama"}
+            onChange={onProviderChange}
+          />
+          <label htmlFor="p-ollama">Ollama</label>
         </div>
       </div>
 
       <div className={styles.field}>
         <div className={styles.label}>Model</div>
-        <select value={settings.model} onChange={(event) => updateField("model", event.target.value)}>
+        <select
+          value={settings.model}
+          onChange={(event) => updateField("model", event.target.value)}
+        >
           {providerModels.map((model) => (
             <option key={model} value={model}>
               {model}
@@ -66,7 +108,12 @@ export function ChatConfigPanel({ agents, models, settings, showThinking, onChan
       {showThinking ? (
         <div className={styles.field}>
           <div className={styles.label}>Thinking effort</div>
-          <select value={settings.thinking_effort ?? ""} onChange={(event) => updateField("thinking_effort", event.target.value || null)}>
+          <select
+            value={settings.thinking_effort ?? ""}
+            onChange={(event) =>
+              updateField("thinking_effort", event.target.value || null)
+            }
+          >
             {THINKING_OPTIONS.map((option) => (
               <option key={option.value || "off"} value={option.value}>
                 {option.label}

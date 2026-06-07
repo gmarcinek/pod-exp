@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildApiPath, buildAppPath } from "../../bootstrap/backend-config";
 import { LiveNotesPanel } from "../home/debate/live-notes-panel";
+import type { ModelCatalog } from "../../lib/types/bootstrap";
 import type { LiveNotes } from "../home/shared/home-types";
 import { FederationTranscript } from "./federation-transcript";
 import type { FederationEntry } from "./federation-transcript";
@@ -8,7 +9,7 @@ import styles from "./federation-page.module.scss";
 
 type FederationPageProps = {
   agents: string[];
-  models: string[];
+  models: ModelCatalog;
 };
 
 type ActiveAgent = {
@@ -34,14 +35,21 @@ function uid(prefix: string) {
 
 export function FederationPage({
   agents: _agents,
-  models,
+  models: initialModels,
 }: FederationPageProps) {
   const [topic, setTopic] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("topic") ?? "";
   });
   const [data, setData] = useState("");
-  const [model, setModel] = useState(() => models[0] ?? "gpt-5.4");
+  const [provider, setProvider] = useState<string>("openai");
+  const [models, setModels] = useState<ModelCatalog>(initialModels);
+  const [model, setModel] = useState<string>(
+    () => initialModels.openai?.[0] ?? "",
+  );
+  const [marshalModel, setMarshalModel] = useState<string>(
+    () => initialModels.openai?.[0] ?? "",
+  );
   const [maxSteps, setMaxSteps] = useState(20);
 
   const [phase, setPhase] = useState<"setup" | "session">("setup");
@@ -55,10 +63,81 @@ export function FederationPage({
   const [entries, setEntries] = useState<FederationEntry[]>([]);
   const [activeAgents, setActiveAgents] = useState<ActiveAgent[]>([]);
 
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+
   const abortRef = useRef<AbortController | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const colorCounterRef = useRef(0);
   const agentColorMapRef = useRef<Map<string, number>>(new Map());
+  const ttsQueueRef = useRef<string[]>([]);
+  const ttsPlayingRef = useRef(false);
+  const ttsBuffersRef = useRef<Map<string, string>>(new Map());
+
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
+  const ttsEnabledRef = useRef(ttsEnabled);
+  ttsEnabledRef.current = ttsEnabled;
+
+  useEffect(() => {
+    fetch(buildApiPath("/api/bootstrap/federation"))
+      .then((r) => r.json())
+      .then((payload) => {
+        const catalog = payload?.initialData?.models;
+        if (catalog && typeof catalog === "object" && !Array.isArray(catalog)) {
+          setModels(catalog as ModelCatalog);
+          // sync model do aktualnego providera jeśli jest pusty
+          const currentProvider = providerRef.current;
+          const providerModels =
+            (catalog as ModelCatalog)[currentProvider] ?? [];
+          setModel((prev) => (prev ? prev : (providerModels[0] ?? "")));
+        }
+      })
+      .catch(() => {
+        /* ignore, use bootstrap data */
+      });
+  }, []);
+
+  async function playNextTTS() {
+    if (ttsQueueRef.current.length === 0) {
+      ttsPlayingRef.current = false;
+      return;
+    }
+    ttsPlayingRef.current = true;
+    const text = ttsQueueRef.current.shift()!;
+    try {
+      const resp = await fetch(buildApiPath("/api/tts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          void playNextTTS();
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          void playNextTTS();
+        };
+        void audio.play().catch(() => {
+          void playNextTTS();
+        });
+      } else {
+        void playNextTTS();
+      }
+    } catch {
+      void playNextTTS();
+    }
+  }
+
+  function enqueueTTS(text: string) {
+    if (!text.trim()) return;
+    ttsQueueRef.current.push(text);
+    if (!ttsPlayingRef.current) void playNextTTS();
+  }
 
   function scrollFeed() {
     requestAnimationFrame(() => {
@@ -132,7 +211,9 @@ export function FederationPage({
         body: JSON.stringify({
           topic,
           data,
+          provider,
           model,
+          marshal_model: marshalModel,
           max_steps: maxSteps,
           max_tokens: maxTokens,
         }),
@@ -205,18 +286,28 @@ export function FederationPage({
           done: false,
         });
         break;
-      case "marshal_text":
+      case "marshal_text": {
+        const delta = String(event.delta ?? "");
+        ttsBuffersRef.current.set(
+          "_marshal",
+          (ttsBuffersRef.current.get("_marshal") ?? "") + delta,
+        );
         updateLastMarshal((e) =>
-          e.type === "marshal"
-            ? { ...e, content: e.content + String(event.delta ?? "") }
-            : e,
+          e.type === "marshal" ? { ...e, content: e.content + delta } : e,
         );
         break;
-      case "marshal_text_end":
+      }
+      case "marshal_text_end": {
+        if (ttsEnabledRef.current) {
+          const buf = ttsBuffersRef.current.get("_marshal") ?? "";
+          if (buf.trim()) enqueueTTS(buf);
+        }
+        ttsBuffersRef.current.delete("_marshal");
         updateLastMarshal((e) =>
           e.type === "marshal" ? { ...e, done: true } : e,
         );
         break;
+      }
       case "agent_joined": {
         const agentName = String(event.agent ?? "");
         const shortName = String(event.short_name ?? agentName);
@@ -247,16 +338,26 @@ export function FederationPage({
         });
         break;
       }
-      case "text":
-        updateLastTurn(String(event.agent ?? ""), (e) =>
-          e.type === "turn"
-            ? { ...e, content: e.content + String(event.delta ?? "") }
-            : e,
+      case "text": {
+        const agentKey = String(event.agent ?? "");
+        const delta = String(event.delta ?? "");
+        ttsBuffersRef.current.set(
+          agentKey,
+          (ttsBuffersRef.current.get(agentKey) ?? "") + delta,
+        );
+        updateLastTurn(agentKey, (e) =>
+          e.type === "turn" ? { ...e, content: e.content + delta } : e,
         );
         break;
-      case "turn_end":
+      }
+      case "turn_end": {
+        const agentName = String(event.agent ?? "");
+        if (ttsEnabledRef.current) {
+          const buf = ttsBuffersRef.current.get(agentName) ?? "";
+          if (buf.trim()) enqueueTTS(buf);
+        }
+        ttsBuffersRef.current.delete(agentName);
         setEntries((prev) => {
-          const agentName = String(event.agent ?? "");
           const idx = [...prev]
             .map((e, i) => ({ e, i }))
             .reverse()
@@ -269,6 +370,7 @@ export function FederationPage({
           return next;
         });
         break;
+      }
       case "live_notes":
         setLiveNotes(event.data as LiveNotes);
         setLastNotesTurn(Number(event.turn ?? null));
@@ -368,7 +470,26 @@ export function FederationPage({
               />
             </label>
 
-            <div className={styles.setupRow}>
+            <div className={styles.setupGrid2x2}>
+              <label className={styles.setupFieldInline}>
+                <span className={styles.setupLabel}>Provider agentów</span>
+                <select
+                  className={styles.setupSelect}
+                  value={provider}
+                  onChange={(e) => {
+                    const p = e.target.value;
+                    setProvider(p);
+                    setModel(models[p]?.[0] ?? "");
+                  }}
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="ollama">
+                    {`Ollama${(models.ollama?.length ?? 0) === 0 ? " (brak)" : ""}`}
+                  </option>
+                </select>
+              </label>
+
               <label className={styles.setupFieldInline}>
                 <span className={styles.setupLabel}>Model agentów</span>
                 <select
@@ -376,7 +497,22 @@ export function FederationPage({
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                 >
-                  {models.map((m) => (
+                  {(models[provider] ?? []).map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.setupFieldInline}>
+                <span className={styles.setupLabel}>Model marszałka</span>
+                <select
+                  className={styles.setupSelect}
+                  value={marshalModel}
+                  onChange={(e) => setMarshalModel(e.target.value)}
+                >
+                  {(models.openai ?? []).map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
@@ -410,6 +546,16 @@ export function FederationPage({
                   onChange={(e) =>
                     setMaxSteps(Number.parseInt(e.target.value, 10) || 20)
                   }
+                />
+              </label>
+
+              <label className={styles.setupFieldInline}>
+                <span className={styles.setupLabel}>TTS (Piper)</span>
+                <input
+                  type="checkbox"
+                  className={styles.setupCheckbox}
+                  checked={ttsEnabled}
+                  onChange={(e) => setTtsEnabled(e.target.checked)}
                 />
               </label>
             </div>

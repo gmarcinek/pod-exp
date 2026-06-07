@@ -1,6 +1,6 @@
 export type HomeMode = "chat" | "debate";
 
-export type ChatProvider = "openai" | "anthropic";
+export type ChatProvider = "openai" | "anthropic" | "ollama";
 
 export type ChatSettings = {
   agent: string;

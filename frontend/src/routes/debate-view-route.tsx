@@ -1,8 +1,17 @@
 import type { DebateViewBootstrapData } from "../lib/types/bootstrap";
-import type { DebateHistoryMessage, DebateRecord } from "../lib/types/bootstrap";
+import type {
+  DebateHistoryMessage,
+  DebateRecord,
+} from "../lib/types/bootstrap";
 import { HomePage } from "../modules/home/home-page";
 import { normalizeDebateSettings } from "../modules/home/shared/home-constants";
-import type { DebateContinuationState, DebateProgress, DebateSettings, DebateTranscriptEntry, LiveNotes } from "../modules/home/shared/home-types";
+import type {
+  DebateContinuationState,
+  DebateProgress,
+  DebateSettings,
+  DebateTranscriptEntry,
+  LiveNotes,
+} from "../modules/home/shared/home-types";
 
 type DebateViewRouteProps = {
   data: DebateViewBootstrapData;
@@ -18,19 +27,28 @@ function readNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeHistory(history: DebateHistoryMessage[] | undefined): DebateHistoryMessage[] {
-  return Array.isArray(history) ? history.map((entry) => ({ role: entry.role, content: entry.content })) : [];
+function normalizeHistory(
+  history: DebateHistoryMessage[] | undefined,
+): DebateHistoryMessage[] {
+  return Array.isArray(history)
+    ? history.map((entry) => ({ role: entry.role, content: entry.content }))
+    : [];
 }
 
-function normalizeProvider(value: string | undefined): "openai" | "anthropic" | undefined {
-  if (value === "openai" || value === "anthropic") {
+function normalizeProvider(
+  value: string | undefined,
+): "openai" | "anthropic" | "ollama" | undefined {
+  if (value === "openai" || value === "anthropic" || value === "ollama") {
     return value;
   }
 
   return undefined;
 }
 
-function normalizeLiveNotes(value: DebateRecord["live_notes"], transcriptLength: number): { liveNotes: LiveNotes | null; lastTurn: number | null } {
+function normalizeLiveNotes(
+  value: DebateRecord["live_notes"],
+  transcriptLength: number,
+): { liveNotes: LiveNotes | null; lastTurn: number | null } {
   if (!isRecord(value)) {
     return { liveNotes: null, lastTurn: null };
   }
@@ -52,27 +70,42 @@ function normalizeLiveNotes(value: DebateRecord["live_notes"], transcriptLength:
         .map((entry) => ({
           turn: readNumber(entry.turn) ?? 0,
           agent: typeof entry.agent === "string" ? entry.agent : undefined,
-          request: typeof entry.request === "string" ? entry.request : undefined,
+          request:
+            typeof entry.request === "string" ? entry.request : undefined,
         }))
         .filter((entry) => entry.turn > 0)
     : [];
 
-  const lastTurn = entries.length > 0 ? Math.max(...entries.map((entry) => entry.turn)) : transcriptLength > 0 ? transcriptLength : null;
+  const lastTurn =
+    entries.length > 0
+      ? Math.max(...entries.map((entry) => entry.turn))
+      : transcriptLength > 0
+        ? transcriptLength
+        : null;
 
   return {
     liveNotes: {
       entries,
       fact_cards: factCards,
-      facts_error: typeof value.facts_error === "string" ? value.facts_error : undefined,
+      facts_error:
+        typeof value.facts_error === "string" ? value.facts_error : undefined,
     },
     lastTurn,
   };
 }
 
-function buildDebateSettings(record: DebateRecord, agents: string[], models: DebateViewBootstrapData["models"]): DebateSettings {
+function buildDebateSettings(
+  record: DebateRecord,
+  agents: string[],
+  models: DebateViewBootstrapData["models"],
+): DebateSettings {
   const config = isRecord(record.config) ? record.config : {};
-  const configDebateMode = typeof config.debate_mode === "string" ? config.debate_mode : undefined;
-  const configDebateModeCustom = typeof config.debate_mode_custom === "string" ? config.debate_mode_custom : undefined;
+  const configDebateMode =
+    typeof config.debate_mode === "string" ? config.debate_mode : undefined;
+  const configDebateModeCustom =
+    typeof config.debate_mode_custom === "string"
+      ? config.debate_mode_custom
+      : undefined;
 
   return normalizeDebateSettings(
     {
@@ -102,7 +135,11 @@ function buildDebateTranscript(record: DebateRecord): DebateTranscriptEntry[] {
   const entries: DebateTranscriptEntry[] = [];
 
   if (record.topic.trim()) {
-    entries.push({ id: `topic-${record.id || "debate"}`, type: "topic", topic: record.topic });
+    entries.push({
+      id: `topic-${record.id || "debate"}`,
+      type: "topic",
+      topic: record.topic,
+    });
   }
 
   record.transcript.forEach((entry, index) => {
@@ -120,7 +157,11 @@ function buildDebateTranscript(record: DebateRecord): DebateTranscriptEntry[] {
   });
 
   if (record.analysis || record.analysis_json) {
-    entries.push({ id: `analysis-divider-${record.id || "debate"}`, type: "divider", label: "ANALIZATOR" });
+    entries.push({
+      id: `analysis-divider-${record.id || "debate"}`,
+      type: "divider",
+      label: "ANALIZATOR",
+    });
     entries.push({
       id: `analysis-${record.id || "debate"}`,
       type: "analysis",
@@ -133,7 +174,11 @@ function buildDebateTranscript(record: DebateRecord): DebateTranscriptEntry[] {
   }
 
   if (record.summary) {
-    entries.push({ id: `summary-divider-${record.id || "debate"}`, type: "divider", label: "SUMMARISER" });
+    entries.push({
+      id: `summary-divider-${record.id || "debate"}`,
+      type: "divider",
+      label: "SUMMARISER",
+    });
     entries.push({
       id: `summary-${record.id || "debate"}`,
       type: "analysis",
@@ -147,7 +192,10 @@ function buildDebateTranscript(record: DebateRecord): DebateTranscriptEntry[] {
   return entries;
 }
 
-function buildContinuationState(record: DebateRecord, liveNotes: LiveNotes | null): DebateContinuationState | null {
+function buildContinuationState(
+  record: DebateRecord,
+  liveNotes: LiveNotes | null,
+): DebateContinuationState | null {
   if (!record.id) {
     return null;
   }
@@ -155,13 +203,20 @@ function buildContinuationState(record: DebateRecord, liveNotes: LiveNotes | nul
   return {
     history1: normalizeHistory(record.history1),
     history2: normalizeHistory(record.history2),
-    transcript: record.transcript.map((entry) => ({ agent: entry.agent, content: entry.content, thinking: entry.thinking })),
+    transcript: record.transcript.map((entry) => ({
+      agent: entry.agent,
+      content: entry.content,
+      thinking: entry.thinking,
+    })),
     live_notes: liveNotes,
     turns_completed: record.transcript.length,
   };
 }
 
-function buildProgress(record: DebateRecord, settings: DebateSettings): DebateProgress {
+function buildProgress(
+  record: DebateRecord,
+  settings: DebateSettings,
+): DebateProgress {
   const completedTurns = record.transcript.length;
   const targetTurns = Math.max(settings.max_turns, completedTurns, 1);
   const completed = completedTurns >= targetTurns && completedTurns > 0;
@@ -174,10 +229,18 @@ function buildProgress(record: DebateRecord, settings: DebateSettings): DebatePr
 }
 
 export function DebateViewRoute({ data }: DebateViewRouteProps) {
-  const debateSettings = buildDebateSettings(data.debate, data.agents, data.models);
-  const { liveNotes, lastTurn } = normalizeLiveNotes(data.debate.live_notes, data.debate.transcript.length);
+  const debateSettings = buildDebateSettings(
+    data.debate,
+    data.agents,
+    data.models,
+  );
+  const { liveNotes, lastTurn } = normalizeLiveNotes(
+    data.debate.live_notes,
+    data.debate.transcript.length,
+  );
   const compactSetup = data.debate.setup ?? null;
-  const shouldAutoStartDebate = data.debate.transcript.length === 0 && compactSetup !== null;
+  const shouldAutoStartDebate =
+    data.debate.transcript.length === 0 && compactSetup !== null;
 
   return (
     <HomePage
@@ -193,7 +256,9 @@ export function DebateViewRoute({ data }: DebateViewRouteProps) {
         debateTranscript: buildDebateTranscript(data.debate),
         progress: buildProgress(data.debate, debateSettings),
         liveNotes,
-        notesSubtitle: data.debate.topic ? "Aktualizowane po każdej turze debaty" : "Po prawej pojawi się skrót sporu",
+        notesSubtitle: data.debate.topic
+          ? "Aktualizowane po każdej turze debaty"
+          : "Po prawej pojawi się skrót sporu",
         lastLiveNotesTurn: lastTurn,
         debateContinuationState: buildContinuationState(data.debate, liveNotes),
         lastDebateConfig: debateSettings,

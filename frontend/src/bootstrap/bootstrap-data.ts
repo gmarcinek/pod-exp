@@ -538,26 +538,26 @@ export function parseBootstrapPayload(payload: unknown): BootstrapPayload {
             ? ((fd as Record<string, unknown>).agents as string[])
             : [],
         models:
-          isRecord(fd) && isStringArray((fd as Record<string, unknown>).models)
-            ? ((fd as Record<string, unknown>).models as string[])
-            : [],
+          isRecord(fd) && isModelCatalog((fd as Record<string, unknown>).models)
+            ? ((fd as Record<string, unknown>).models as ModelCatalog)
+            : {},
       };
       return { route, apiBaseUrl, appBasePath, initialData: federationData };
     }
     case "federation-view": {
       const fv = payload.initialData;
-      const rawRecord = isRecord(fv) ? (fv as Record<string, unknown>).record : undefined;
+      const rawRecord = isRecord(fv)
+        ? (fv as Record<string, unknown>).record
+        : undefined;
       const rec = isRecord(rawRecord) ? rawRecord : {};
       const transcript: FederationViewTurn[] = Array.isArray(rec.transcript)
-        ? (rec.transcript as unknown[])
-            .filter(isRecord)
-            .map((t) => ({
-              agent: typeof t.agent === "string" ? t.agent : "",
-              short_name: typeof t.short_name === "string" ? t.short_name : "",
-              content: typeof t.content === "string" ? t.content : "",
-              step: typeof t.step === "number" ? t.step : 0,
-              thinking: typeof t.thinking === "string" ? t.thinking : undefined,
-            }))
+        ? (rec.transcript as unknown[]).filter(isRecord).map((t) => ({
+            agent: typeof t.agent === "string" ? t.agent : "",
+            short_name: typeof t.short_name === "string" ? t.short_name : "",
+            content: typeof t.content === "string" ? t.content : "",
+            step: typeof t.step === "number" ? t.step : 0,
+            thinking: typeof t.thinking === "string" ? t.thinking : undefined,
+          }))
         : [];
       const fvRecord: FederationViewRecord = {
         id: typeof rec.id === "string" ? rec.id : "",
@@ -568,7 +568,10 @@ export function parseBootstrapPayload(payload: unknown): BootstrapPayload {
         transcript,
         live_notes: isRecord(rec.live_notes) ? rec.live_notes : null,
         summary: typeof rec.summary === "string" ? rec.summary : "",
-        total_steps: typeof rec.total_steps === "number" ? rec.total_steps : transcript.length,
+        total_steps:
+          typeof rec.total_steps === "number"
+            ? rec.total_steps
+            : transcript.length,
       };
       const fvData: FederationViewBootstrapData = { record: fvRecord };
       return { route, apiBaseUrl, appBasePath, initialData: fvData };

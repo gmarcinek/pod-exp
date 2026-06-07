@@ -1,8 +1,19 @@
 import { useState } from "react";
 import { buildApiPath, buildAppPath } from "../bootstrap/backend-config";
-import type { DebateSetupData, NewDebateBootstrapData } from "../lib/types/bootstrap";
-import { DEBATE_MODE_OPTIONS, MAX_TOKEN_OPTIONS, getModelsForProvider, normalizeDebateSettings } from "../modules/home/shared/home-constants";
-import { loadDebateSettings, saveDebateSettings } from "../modules/home/shared/home-storage";
+import type {
+  DebateSetupData,
+  NewDebateBootstrapData,
+} from "../lib/types/bootstrap";
+import {
+  DEBATE_MODE_OPTIONS,
+  MAX_TOKEN_OPTIONS,
+  getModelsForProvider,
+  normalizeDebateSettings,
+} from "../modules/home/shared/home-constants";
+import {
+  loadDebateSettings,
+  saveDebateSettings,
+} from "../modules/home/shared/home-storage";
 import type { DebateSettings } from "../modules/home/shared/home-types";
 import screenStyles from "../modules/home/shared/home-screen.module.scss";
 import styles from "./new-debate-route.module.scss";
@@ -70,7 +81,10 @@ function AgentCard({
       <div className={styles.agentForm}>
         <label className={styles.field}>
           <span className={styles.label}>Agent</span>
-          <select value={agent} onChange={(event) => onAgentChange(event.target.value)}>
+          <select
+            value={agent}
+            onChange={(event) => onAgentChange(event.target.value)}
+          >
             {agents.map((agentOption) => (
               <option key={agentOption} value={agentOption}>
                 {agentOption}
@@ -82,17 +96,45 @@ function AgentCard({
         <div className={styles.field}>
           <span className={styles.label}>Provider</span>
           <div className={styles.toggle}>
-            <input id={`new-debate-provider-${slot}-openai`} type="radio" name={`new-debate-provider-${slot}`} value="openai" checked={provider === "openai"} onChange={() => onProviderChange("openai")} />
+            <input
+              id={`new-debate-provider-${slot}-openai`}
+              type="radio"
+              name={`new-debate-provider-${slot}`}
+              value="openai"
+              checked={provider === "openai"}
+              onChange={() => onProviderChange("openai")}
+            />
             <label htmlFor={`new-debate-provider-${slot}-openai`}>OpenAI</label>
-            <input id={`new-debate-provider-${slot}-anthropic`} type="radio" name={`new-debate-provider-${slot}`} value="anthropic" checked={provider === "anthropic"} onChange={() => onProviderChange("anthropic")} />
-            <label htmlFor={`new-debate-provider-${slot}-anthropic`}>Anthropic</label>
+            <input
+              id={`new-debate-provider-${slot}-anthropic`}
+              type="radio"
+              name={`new-debate-provider-${slot}`}
+              value="anthropic"
+              checked={provider === "anthropic"}
+              onChange={() => onProviderChange("anthropic")}
+            />
+            <label htmlFor={`new-debate-provider-${slot}-anthropic`}>
+              Anthropic
+            </label>
+            <input
+              id={`new-debate-provider-${slot}-ollama`}
+              type="radio"
+              name={`new-debate-provider-${slot}`}
+              value="ollama"
+              checked={provider === "ollama"}
+              onChange={() => onProviderChange("ollama")}
+            />
+            <label htmlFor={`new-debate-provider-${slot}-ollama`}>Ollama</label>
           </div>
         </div>
 
         <div className={styles.fieldRow}>
           <label className={styles.field}>
             <span className={styles.label}>Model</span>
-            <select value={model} onChange={(event) => onModelChange(event.target.value)}>
+            <select
+              value={model}
+              onChange={(event) => onModelChange(event.target.value)}
+            >
               {availableModels.map((modelOption) => (
                 <option key={modelOption} value={modelOption}>
                   {modelOption}
@@ -103,7 +145,14 @@ function AgentCard({
 
           <label className={styles.field}>
             <span className={styles.label}>Max tokens</span>
-            <select value={maxTokens} onChange={(event) => onMaxTokensChange(event.target.value as DebateSettings["max_tokens1"])}>
+            <select
+              value={maxTokens}
+              onChange={(event) =>
+                onMaxTokensChange(
+                  event.target.value as DebateSettings["max_tokens1"],
+                )
+              }
+            >
               {MAX_TOKEN_OPTIONS.map((value) => (
                 <option key={value} value={value}>
                   {value}
@@ -115,12 +164,24 @@ function AgentCard({
 
         <label className={styles.field}>
           <span className={styles.label}>Prywatny cel agenta</span>
-          <textarea className={styles.textarea} value={privateGoal} onChange={(event) => onPrivateGoalChange(event.target.value)} rows={5} placeholder="Cel prywatny znany tylko temu agentowi na starcie" />
+          <textarea
+            className={styles.textarea}
+            value={privateGoal}
+            onChange={(event) => onPrivateGoalChange(event.target.value)}
+            rows={5}
+            placeholder="Cel prywatny znany tylko temu agentowi na starcie"
+          />
         </label>
 
         <label className={styles.field}>
           <span className={styles.label}>Prywatne dokumenty agenta</span>
-          <textarea className={styles.textarea} value={privateDocuments} onChange={(event) => onPrivateDocumentsChange(event.target.value)} rows={8} placeholder="Dane wejściowe znane tylko temu agentowi na starcie" />
+          <textarea
+            className={styles.textarea}
+            value={privateDocuments}
+            onChange={(event) => onPrivateDocumentsChange(event.target.value)}
+            rows={8}
+            placeholder="Dane wejściowe znane tylko temu agentowi na starcie"
+          />
         </label>
       </div>
     </section>
@@ -147,7 +208,9 @@ function buildPublicTopic(setup: DebateSetupData) {
 }
 
 export function NewDebateRoute({ data }: NewDebateRouteProps) {
-  const [settings, setSettings] = useState<DebateSettings>(() => loadDebateSettings(data.agents, data.models));
+  const [settings, setSettings] = useState<DebateSettings>(() =>
+    loadDebateSettings(data.agents, data.models),
+  );
   const [sharedGoal, setSharedGoal] = useState("");
   const [sharedDocuments, setSharedDocuments] = useState("");
   const [agent1PrivateGoal, setAgent1PrivateGoal] = useState("");
@@ -159,7 +222,11 @@ export function NewDebateRoute({ data }: NewDebateRouteProps) {
 
   function updateSettings(nextValue: Partial<DebateSettings>) {
     setSettings((current) => {
-      const normalized = normalizeDebateSettings({ ...current, ...nextValue }, data.agents, data.models);
+      const normalized = normalizeDebateSettings(
+        { ...current, ...nextValue },
+        data.agents,
+        data.models,
+      );
       saveDebateSettings(normalized);
       return normalized;
     });
@@ -175,7 +242,10 @@ export function NewDebateRoute({ data }: NewDebateRouteProps) {
       [providerKey]: provider,
       [modelKey]: availableModels[0] ?? "",
       [thinkingKey]: null,
-    } as Pick<DebateSettings, typeof providerKey | typeof modelKey | typeof thinkingKey>);
+    } as Pick<
+      DebateSettings,
+      typeof providerKey | typeof modelKey | typeof thinkingKey
+    >);
   }
 
   const leftModels = getModelsForProvider(data.models, settings.provider1);
@@ -215,24 +285,36 @@ export function NewDebateRoute({ data }: NewDebateRouteProps) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const payload = (await response.json()) as { id?: string; error?: string };
+      const payload = (await response.json()) as {
+        id?: string;
+        error?: string;
+      };
       if (payload.error || !payload.id) {
         throw new Error(payload.error ?? "Nie udało się utworzyć debaty.");
       }
 
       window.location.assign(buildAppPath(`/debate/${payload.id}`));
     } catch (error) {
-      setStartError(error instanceof Error ? error.message : "Nie udało się rozpocząć debaty.");
+      setStartError(
+        error instanceof Error
+          ? error.message
+          : "Nie udało się rozpocząć debaty.",
+      );
       setStartPending(false);
     }
   }
 
   return (
     <div className={screenStyles.shell}>
-      <aside className={`${screenStyles.sidebar} ${styles.newDebateSidebar}`} aria-label="Konfiguracja nowej debaty">
+      <aside
+        className={`${screenStyles.sidebar} ${styles.newDebateSidebar}`}
+        aria-label="Konfiguracja nowej debaty"
+      >
         <div className={screenStyles.logo}>
           Nowa debata
-          <span className={screenStyles.logoSmall}>Uproszczony widok przygotowania sporu</span>
+          <span className={screenStyles.logoSmall}>
+            Uproszczony widok przygotowania sporu
+          </span>
         </div>
 
         <div className={screenStyles.sidebarSectionCompact}>
@@ -251,7 +333,12 @@ export function NewDebateRoute({ data }: NewDebateRouteProps) {
             <div className={styles.agentForm}>
               <label className={styles.field}>
                 <span className={styles.label}>Tryb rozmowy</span>
-                <select value={settings.debate_mode} onChange={(event) => updateSettings({ debate_mode: event.target.value })}>
+                <select
+                  value={settings.debate_mode}
+                  onChange={(event) =>
+                    updateSettings({ debate_mode: event.target.value })
+                  }
+                >
                   {DEBATE_MODE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -262,40 +349,79 @@ export function NewDebateRoute({ data }: NewDebateRouteProps) {
 
               <label className={styles.field}>
                 <span className={styles.label}>Maks. wymian</span>
-                <input type="number" min={2} max={32} value={settings.max_turns} onChange={(event) => updateSettings({ max_turns: Number.parseInt(event.target.value, 10) || 10 })} />
+                <input
+                  type="number"
+                  min={2}
+                  max={32}
+                  value={settings.max_turns}
+                  onChange={(event) =>
+                    updateSettings({
+                      max_turns: Number.parseInt(event.target.value, 10) || 10,
+                    })
+                  }
+                />
               </label>
 
               <label className={styles.field}>
                 <span className={styles.label}>Wspolny cel</span>
-                <textarea className={styles.textarea} value={sharedGoal} onChange={(event) => setSharedGoal(event.target.value)} rows={6} placeholder="Cel publiczny wspolny dla obu agentow" />
+                <textarea
+                  className={styles.textarea}
+                  value={sharedGoal}
+                  onChange={(event) => setSharedGoal(event.target.value)}
+                  rows={6}
+                  placeholder="Cel publiczny wspolny dla obu agentow"
+                />
               </label>
 
               <label className={styles.field}>
                 <span className={styles.label}>Wspolne dokumenty</span>
-                <textarea className={styles.textarea} value={sharedDocuments} onChange={(event) => setSharedDocuments(event.target.value)} rows={9} placeholder="Publiczne dokumenty i dane dostepne dla obu agentow" />
+                <textarea
+                  className={styles.textarea}
+                  value={sharedDocuments}
+                  onChange={(event) => setSharedDocuments(event.target.value)}
+                  rows={9}
+                  placeholder="Publiczne dokumenty i dane dostepne dla obu agentow"
+                />
               </label>
 
-              <button type="button" className={styles.startButton} disabled={startPending} onClick={() => void handleStartDebate()}>
+              <button
+                type="button"
+                className={styles.startButton}
+                disabled={startPending}
+                onClick={() => void handleStartDebate()}
+              >
                 {startPending ? "Tworzenie debaty..." : "▶ Rozpocznij debate"}
               </button>
 
-              {startError ? <div className={styles.startError}>{startError}</div> : null}
+              {startError ? (
+                <div className={styles.startError}>{startError}</div>
+              ) : null}
             </div>
           </section>
 
           <section className={styles.panelSection}>
-            <div className={styles.sidebarHint}>Start zapisuje nowa debate i przenosi od razu na zwykly adres `/debate/uuid`, bez osobnego route live.</div>
+            <div className={styles.sidebarHint}>
+              Start zapisuje nowa debate i przenosi od razu na zwykly adres
+              `/debate/uuid`, bez osobnego route live.
+            </div>
           </section>
         </div>
       </aside>
 
       <main className={screenStyles.main}>
         <div className={screenStyles.contentGrid}>
-          <section className={`${screenStyles.transcriptPane} ${styles.stagePane}`} aria-label="Podgląd nowej debaty">
+          <section
+            className={`${screenStyles.transcriptPane} ${styles.stagePane}`}
+            aria-label="Podgląd nowej debaty"
+          >
             <div className={styles.stageIntro}>
               <span className={styles.kicker}>Nowa debata</span>
               <h1 className={styles.title}>Ustawienia debaty agentów</h1>
-              <p className={styles.subtitle}>Lewa i prawa kolumna opisują prywatny setup każdego agenta. Środkowa kolumna zawiera wiedzę wspólną, cel publiczny i start debaty.</p>
+              <p className={styles.subtitle}>
+                Lewa i prawa kolumna opisują prywatny setup każdego agenta.
+                Środkowa kolumna zawiera wiedzę wspólną, cel publiczny i start
+                debaty.
+              </p>
             </div>
 
             <div className={styles.agentGrid}>
@@ -313,7 +439,9 @@ export function NewDebateRoute({ data }: NewDebateRouteProps) {
                 onAgentChange={(agent) => updateSettings({ agent1: agent })}
                 onProviderChange={(provider) => updateProvider(1, provider)}
                 onModelChange={(model) => updateSettings({ model1: model })}
-                onMaxTokensChange={(maxTokens) => updateSettings({ max_tokens1: maxTokens })}
+                onMaxTokensChange={(maxTokens) =>
+                  updateSettings({ max_tokens1: maxTokens })
+                }
                 onPrivateGoalChange={setAgent1PrivateGoal}
                 onPrivateDocumentsChange={setAgent1PrivateDocuments}
               />
@@ -332,7 +460,9 @@ export function NewDebateRoute({ data }: NewDebateRouteProps) {
                 onAgentChange={(agent) => updateSettings({ agent2: agent })}
                 onProviderChange={(provider) => updateProvider(2, provider)}
                 onModelChange={(model) => updateSettings({ model2: model })}
-                onMaxTokensChange={(maxTokens) => updateSettings({ max_tokens2: maxTokens })}
+                onMaxTokensChange={(maxTokens) =>
+                  updateSettings({ max_tokens2: maxTokens })
+                }
                 onPrivateGoalChange={setAgent2PrivateGoal}
                 onPrivateDocumentsChange={setAgent2PrivateDocuments}
               />

@@ -89,7 +89,7 @@
 }
 
 .stepLabel {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: .1em;
   text-transform: uppercase;
@@ -103,7 +103,7 @@
 }
 
 .stepDesc {
-  font-size: 13px;
+  font-size: 14px;
   color: #8888a0;
   line-height: 1.55;
   margin-top: -6px;
@@ -117,7 +117,7 @@
 }
 
 .label {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-dim);
 }
@@ -128,7 +128,7 @@
   background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
 
   &:focus { outline: none; border-color: var(--accent); }
@@ -152,7 +152,7 @@
 .chip {
   padding: 4px 12px;
   border-radius: 20px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   background: rgba(255,255,255,.05);
   border: 1px solid rgba(255,255,255,.1);
@@ -185,7 +185,7 @@
   background: none;
   border: 1px solid var(--border);
   color: #8888a0;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
 
   &:hover { border-color: var(--accent); color: var(--accent); }
@@ -197,7 +197,7 @@
   border-radius: 8px;
   background: var(--accent);
   color: #fff;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   border: none;
   cursor: pointer;
@@ -219,7 +219,7 @@
 }
 
 .reviewLabel {
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .08em;
@@ -227,7 +227,7 @@
 }
 
 .reviewValue {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
@@ -267,7 +267,7 @@
 }
 
 .successDesc {
-  font-size: 13px;
+  font-size: 14px;
   color: #8888a0;
 }
 
@@ -277,7 +277,7 @@
   background: rgba(192,57,43,.12);
   border: 1px solid rgba(192,57,43,.3);
   color: #e07060;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 @keyframes spin {

@@ -128,7 +128,7 @@ export type NewDebateBootstrapPayload = {
 
 export type FederationBootstrapData = {
   agents: string[];
-  models: string[];
+  models: ModelCatalog;
 };
 
 export type FederationViewTurn = {
@@ -154,8 +154,6 @@ export type FederationViewRecord = {
 export type FederationViewBootstrapData = {
   record: FederationViewRecord;
 };
-
-
 
 export type AgentSummary = {
   name: string;

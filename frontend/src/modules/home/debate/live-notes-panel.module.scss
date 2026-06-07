@@ -5,7 +5,7 @@
 }
 
 .title {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -14,7 +14,7 @@
 
 .subtitle {
     margin-top: 4px;
-    font-size: 11px;
+    font-size: 14px;
     color: var(--text-dim);
 }
 
@@ -29,7 +29,7 @@
 
 .empty {
     color: var(--text-dim);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.6;
     border: 1px dashed var(--border);
     border-radius: 12px;
@@ -41,7 +41,7 @@
 }
 
 .sectionTitle {
-    font-size: 10px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: .12em;
     text-transform: uppercase;
@@ -62,7 +62,7 @@
 }
 
 .kicker {
-    font-size: 10px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: .12em;
     text-transform: uppercase;
@@ -71,14 +71,14 @@
 }
 
 .noteText {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text);
 }
 
 .factGrid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(49%, 200px));
-    gap: 2% 1%;
+    gap: 8px;
     justify-content: start;
 }
 
@@ -93,11 +93,11 @@
 }
 
 .factText {
-    font-size: 13px;
+    font-size: 14px;
     color: #f4e2a1;
 }
 
 .meta {
-    font-size: 10.5px;
+    font-size: 14px;
     color: var(--text-dim);
 }

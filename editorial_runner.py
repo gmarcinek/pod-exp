@@ -198,19 +198,50 @@ PATCH_VALIDATOR_INSTRUCTION = (
     EDITORIAL_CONSERVATION_CHARTER
     + """
 
-Jesteś rygorystycznym walidatorem patchy. Porównaj każdy patch z ORYGINAŁEM, AKTUALNĄ WERSJĄ,
-BRIEFEM i diagnozą. ACCEPT wydaj wyłącznie dla lokalnej korekty konkretnego błędu, gdy zakres
-ingerencji jest najmniejszy możliwy. REJECT wydaj w razie wątpliwości, dla decyzji autorskiej,
-nowego faktu, nowej czynności, zmiany metafory bez błędu albo zmiany struktury, tempa, sensu czy
-głosu autora. Patch o scope "paragraph" zaakceptuj tylko, gdy mniejsza ingerencja nie może usunąć
-konkretnego błędu. Nie wystarczy, że wariant usuwa wskazany problem: sprawdź również, czy nie tworzy
-nowego błędu językowego, niezręczności, powtórzenia, sztucznej sygnatury modelowej albo pogorszenia
-rytmu. Dla zmian innych niż czysta interpunkcja porównaj wszystkie warianty z ORYGINAŁEM. Wybierz
-wyłącznie wariant o najmniejszej zmianie znaczenia i najlepszej naturalności językowej. Jeżeli żaden
-wariant nie jest wyraźnie lepszy od oryginału, wydaj REJECT. Bezsporne błędy językowe, gramatyczne,
-referencyjne i ciągłości czynności muszą zostać naprawione: zachowawczość nie jest podstawą do
-pozostawienia realnego błędu. Zwróć wyłącznie poprawny JSON:
+Jesteś rygorystycznym walidatorem patchy. Dla każdego patcha dostajesz dossier: cytat źródłowy,
+warianty, kontekst przed i po fragmencie, istotne ustalenia o rejestrach dokumentu i diagnozy ról.
+Porównaj patch z ORYGINAŁEM, AKTUALNĄ WERSJĄ, BRIEFEM i diagnozą. ACCEPT wydaj wyłącznie dla
+lokalnej korekty konkretnego błędu, gdy zakres ingerencji jest najmniejszy możliwy.
+
+REJESTR, metafora, urwane zdanie, kolokwializm, popkulturowe odwołanie lub aforystyczne domknięcie
+nie są błędem tylko dlatego, że odbiegają od tonu sąsiednich zdań lub nie dodają nowej informacji.
+Patch kategorii REJESTR zaakceptuj wyłącznie, gdy dossier wskazuje konkretną regresję funkcji
+retorycznej (np. zaciera referent, przeczy ustalonemu rejestrowi danego modułu albo powtarza tę samą
+funkcję bez wariacji). Jeżeli mapa rejestrów lub diagnoza opisuje ten zabieg jako celowy, wydaj REJECT
+bez jednoznacznego dowodu konfliktu wewnątrz tekstu. Nie zastępuj metafory objaśnieniem tylko dlatego,
+że jest intensywna.
+
+REJECT wydaj w razie wątpliwości, dla decyzji autorskiej, nowego faktu, nowej czynności, zmiany
+metafory bez błędu albo zmiany struktury, tempa, sensu czy głosu autora. Patch o scope "paragraph"
+zaakceptuj tylko, gdy mniejsza ingerencja nie może usunąć konkretnego błędu. Nie wystarczy, że wariant
+usuwa wskazany problem: sprawdź również, czy nie tworzy nowego błędu językowego, niezręczności,
+powtórzenia, sztucznej sygnatury modelowej albo pogorszenia rytmu. Dla zmian innych niż czysta
+interpunkcja porównaj wszystkie warianty z ORYGINAŁEM. Wybierz wyłącznie wariant o najmniejszej
+zmianie znaczenia i najlepszej naturalności językowej. Jeżeli żaden wariant nie jest wyraźnie lepszy
+od oryginału, wydaj REJECT. Bezsporne błędy językowe, gramatyczne, referencyjne i ciągłości czynności
+muszą zostać naprawione: zachowawczość nie jest podstawą do pozostawienia realnego błędu. Zwróć
+wyłącznie poprawny JSON:
 {"verdicts":[{"id":"p1","decision":"ACCEPT" lub "REJECT","selected_variant_id":"p1-v1" lub null,"reason":"krótkie, konkretne uzasadnienie wraz z oceną regresji"}]}
+"""
+).strip()
+
+EDITORIAL_INTEGRITY_VERIFIER_INSTRUCTION = (
+    EDITORIAL_CONSERVATION_CHARTER
+    + """
+
+Jesteś niezależnym Weryfikatorem integralności redakcji. Otrzymujesz wersję sprzed tej iteracji,
+kandydacką wersję po zaakceptowanych patchach, porównania fragmentów w kontekście, mapę rejestrów
+dokumentu i wcześniejsze diagnozy. Oceń różnicę oraz skalę wykonanej pracy w perspektywie całego
+utworu, nie tylko poprawność pojedynczego patcha.
+
+Zachowuj tylko zmiany, które dają wyraźny zysk redakcyjny. Cofnij zmianę, gdy poprawia powierzchowną
+logikę lub klarowność kosztem celowego głosu, rytmu, metafory albo świadomej zmiany rejestru. Zwróć
+uwagę na sprzeczności: diagnostyka nie może najpierw uznać rejestru za celowy, a następnie usuwać go
+bez nowego, konkretnego dowodu. Oceń też, czy suma zmian jest proporcjonalna do realnego zysku;
+aparatura procesu nie jest argumentem za ingerencją. Nie projektuj nowych poprawek.
+
+Zwróć wyłącznie JSON:
+{"assessment":{"verdict":"plus|minus|mixed|neutral","scope":"krótka ocena skali pracy","reason":"bilans zysku i strat","contradictions":["konkretna sprzeczność lub []"]},"verdicts":[{"id":"p1","decision":"KEEP" lub "REVERT","reason":"konkretna decyzja w świetle kontekstu i rejestru"}]}
 """
 ).strip()
 
@@ -451,6 +482,98 @@ def _build_role_message(
                 + "\n\n".join(current_cycle_sections)
             )
     return "\n\n".join(sections)
+
+
+def _patch_context(text: str, source: str, *, radius: int = 5) -> str:
+    occurrences = text.count(source)
+    if occurrences != 1:
+        return f"Brak jednoznacznego kontekstu: cytat występuje {occurrences} razy."
+    source_start = text.index(source)
+    line_start = text.count("\n", 0, source_start) + 1
+    source_end = source_start + len(source)
+    line_end = text.count("\n", 0, source_end) + 1
+    return _numbered_editorial_lines(
+        text,
+        max(1, line_start - radius),
+        line_end + radius,
+    )
+
+
+def _build_patch_validation_message(
+    *,
+    context_block: str,
+    historical_outputs: list[dict[str, str | int]],
+    cycle_outputs: dict[str, str],
+    plan: dict[str, object],
+    current_text: str,
+    patches: list[dict[str, object]],
+) -> str:
+    compact_context = "\n\n".join(
+        section
+        for section in context_block.split("\n\n")
+        if not section.startswith("ORYGINAŁ INPUT:")
+        and not section.startswith("AKTUALNA WERSJA ROBOCZA:")
+    )
+    base = _build_role_message(
+        context_block=compact_context,
+        historical_outputs=historical_outputs,
+        cycle_outputs=cycle_outputs,
+    )
+    document_handoff = plan.get("document_handoff")
+    register_map = (
+        document_handoff.get("voice")
+        if isinstance(document_handoff, dict)
+        else []
+    )
+    dossiers = []
+    for patch in patches:
+        source = str(patch["source"])
+        variants = "\n".join(
+            f"- {variant['id']}: {variant['replacement']}"
+            for variant in patch["variants"]
+        )
+        dossiers.append(
+            "\n".join([
+                f"PATCH {patch['id']} | KATEGORIA: {patch['category']}",
+                f"DIAGNOZA REWRITERA: {patch['reason']}",
+                "KONTEKST AKTUALNEJ WERSJI:",
+                _patch_context(current_text, source),
+                "WARIANTY:",
+                variants,
+            ])
+        )
+    return "\n\n".join([
+        base,
+        "MAPA CELOWYCH REJESTRÓW Z HANDOFFU:\n" + json.dumps(register_map, ensure_ascii=False),
+        "DOSSIERS PATCHY (oceniaj każdy w kontekście):\n" + "\n\n".join(dossiers),
+    ])
+
+
+def _build_integrity_verification_message(
+    *,
+    plan: dict[str, object],
+    cycle_outputs: dict[str, str],
+    before_text: str,
+    candidate_text: str,
+    accepted_patches: list[dict[str, object]],
+) -> str:
+    comparisons = []
+    for patch in accepted_patches:
+        comparisons.append(
+            "\n".join([
+                f"PATCH {patch['id']} | {patch['category']}",
+                f"UZASADNIENIE: {patch['reason']}",
+                "PRZED:",
+                _patch_context(before_text, str(patch["source"])),
+                "PO:",
+                _patch_context(candidate_text, str(patch["replacement"])),
+            ])
+        )
+    return "\n\n".join([
+        "MAPA DOKUMENTU I REJESTRÓW:\n" + json.dumps(plan.get("document_handoff", {}), ensure_ascii=False),
+        "DIAGNOZY BIEŻĄCEJ ITERACJI:\n" + json.dumps(cycle_outputs, ensure_ascii=False),
+        "PORÓWNANIA ZATWIERDZONYCH PATCHY:\n" + "\n\n".join(comparisons),
+    ])
 
 
 def _parse_json_object(content: str, key: str) -> list[dict[str, object]]:
@@ -1298,24 +1421,66 @@ def _run_editorial_loop(data: dict):
                 messages=[
                     {
                         "role": "user",
-                        "content": (
-                            _build_role_message(
-                                context_block=context_block,
-                                historical_outputs=historical_outputs,
-                                cycle_outputs=cycle_outputs,
-                            )
-                            + "\n\nPROPONOWANE PATCHES:\n"
-                            + proposal_content
+                        "content": _build_patch_validation_message(
+                            context_block=context_block,
+                            historical_outputs=historical_outputs,
+                            cycle_outputs=cycle_outputs,
+                            plan=plan,
+                            current_text=current_text,
+                            patches=proposed_patches,
                         ),
                     }
                 ],
             )
             verdicts = _parse_json_object(validation_response, "verdicts")
-            current_text, accepted_patches, rejected_patches = _apply_accepted_patches(
+            candidate_text, provisionally_accepted, rejected_patches = _apply_accepted_patches(
                 current_text,
                 proposed_patches,
                 verdicts,
             )
+            integrity_response = call_role(
+                phase="integrity_verification",
+                role="integrity_verifier",
+                system_prompt=EDITORIAL_INTEGRITY_VERIFIER_INSTRUCTION,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _build_integrity_verification_message(
+                            plan=plan,
+                            cycle_outputs=cycle_outputs,
+                            before_text=current_text,
+                            candidate_text=candidate_text,
+                            accepted_patches=provisionally_accepted,
+                        ),
+                    }
+                ],
+            )
+            integrity_payload = _parse_json_dict(integrity_response)
+            integrity_verdicts = _parse_json_object(integrity_response, "verdicts")
+            integrity_decisions = {
+                str(verdict.get("id") or ""): str(verdict.get("decision") or "").upper()
+                for verdict in integrity_verdicts
+            }
+            integrity_reasons = {
+                str(verdict.get("id") or ""): str(verdict.get("reason") or "").strip()
+                for verdict in integrity_verdicts
+            }
+            final_verdicts = [
+                {
+                    "id": patch["id"],
+                    "decision": "ACCEPT" if integrity_decisions.get(str(patch["id"])) == "KEEP" else "REJECT",
+                    "selected_variant_id": patch["selected_variant_id"],
+                    "reason": integrity_reasons.get(str(patch["id"]))
+                    or "Weryfikator integralności nie potwierdził wystarczającego zysku redakcyjnego.",
+                }
+                for patch in provisionally_accepted
+            ]
+            current_text, accepted_patches, integrity_reverted_patches = _apply_accepted_patches(
+                current_text,
+                provisionally_accepted,
+                final_verdicts,
+            )
+            rejected_patches.extend(integrity_reverted_patches)
             current_manifest = store_editorial_document(
                 editorial_id=edit_id,
                 version=cycle,
@@ -1340,10 +1505,14 @@ def _run_editorial_loop(data: dict):
                 verdicts=verdicts,
                 accepted_patches=accepted_patches,
                 rejected_patches=rejected_patches,
+                integrity_assessment=integrity_payload.get("assessment", {}),
+                integrity_verdicts=integrity_verdicts,
             )
             validation_content = json.dumps(
                 {
                     "verdicts": verdicts,
+                    "integrity_assessment": integrity_payload.get("assessment", {}),
+                    "integrity_verdicts": integrity_verdicts,
                     "accepted": accepted_patches,
                     "rejected": rejected_patches,
                 },
@@ -1358,6 +1527,14 @@ def _run_editorial_loop(data: dict):
             }
             transcript.append(validation_entry)
             historical_outputs.append(validation_entry)
+            integrity_entry = {
+                "cycle": cycle,
+                "role": "integrity_verifier",
+                "label": "Weryfikator integralności redakcji",
+                "content": json.dumps(integrity_payload, ensure_ascii=False, indent=2),
+            }
+            transcript.append(integrity_entry)
+            historical_outputs.append(integrity_entry)
             _write_debate_snapshot(build_record(cycles_completed=cycles_completed, status="running"))
             yield {
                 "type": "editorial_role_output",
@@ -1365,6 +1542,13 @@ def _run_editorial_loop(data: dict):
                 "role": "patch_validator",
                 "label": "Walidator patchy",
                 "content": validation_content,
+            }
+            yield {
+                "type": "editorial_role_output",
+                "cycle": cycle,
+                "role": "integrity_verifier",
+                "label": "Weryfikator integralności redakcji",
+                "content": integrity_entry["content"],
             }
 
             synthesis_content = json.dumps(

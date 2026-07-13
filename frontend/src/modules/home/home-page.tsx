@@ -777,6 +777,22 @@ export function HomePage({
             >
               🏛 Federacja
             </a>
+            <a
+              className={styles.archiveLink}
+              href={buildAppPath("/editorial")}
+              target="_blank"
+              rel="noreferrer"
+            >
+              ✍ Moduł redakcyjny
+            </a>
+            <a
+              className={styles.archiveLink}
+              href={buildAppPath("/editorials")}
+              target="_blank"
+              rel="noreferrer"
+            >
+              📝 Lista editoriali
+            </a>
           </>
         )}
 

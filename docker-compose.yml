@@ -1,0 +1,31 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pod-exp:latest
+    container_name: pod-exp
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    env_file:
+      - .env
+    environment:
+      # Wartości domyślne — nadpisywane przez .env, jeśli tam są
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      PIPER_EXECUTABLE: /opt/piper/piper
+      PIPER_MODEL_DIR: /app/piper_models
+      PIPER_DEFAULT_MODEL: ${PIPER_DEFAULT_MODEL:-pl_PL-darkman-medium}
+      EDITORIAL_DB_PATH: /app/editorial-data/editorials.sqlite3
+    volumes:
+      # Trwałe dane debat (zapisywane przez backend)
+      - ./debates:/app/debates
+      # Trwała baza SQLite dla wersji dokumentów i decyzji patchy
+      - ./editorial-data:/app/editorial-data
+      # Profile agentów — montujemy hot-reload, żeby edycje JSON-ów były widoczne
+      - ./agents:/app/agents
+      # Modele Piper TTS (pobrane lokalnie, montowane do kontenera)
+      - ./piper_models:/app/piper_models:ro
+    extra_hosts:
+      # Umożliwia kontenerowi dostęp do Ollamy działającej na hoście (Linux/Mac/Win)
+      - "host.docker.internal:host-gateway"

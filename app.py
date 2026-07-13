@@ -9,10 +9,11 @@ Uruchomienie:
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, redirect, request, send_from_directory, stream_with_context
+from flask import Flask, Response, jsonify, redirect, request, send_file, send_from_directory, stream_with_context
 
 load_dotenv()
 
@@ -25,6 +26,8 @@ from bootstrap_service import (
     _build_bootstrap_payload,
     _build_debate_view_bootstrap_payload,
     _build_debates_bootstrap_payload,
+    _build_editorial_bootstrap_payload,
+    _build_editorials_bootstrap_payload,
     _build_federation_view_bootstrap_payload,
     _build_home_bootstrap_payload,
     _build_new_debate_bootstrap_payload,
@@ -54,6 +57,8 @@ from debate_schema import (
     _normalize_debate_setup,
 )
 from federation_runner import _run_federation
+from editorial_runner import _run_editorial_loop
+from editorial_exports import build_editorial_export
 from tts_service import run_piper_tts
 from frontend_service import _render_frontend_shell, _render_legacy_template
 from live_notes import _empty_live_notes
@@ -97,6 +102,16 @@ def get_federation_bootstrap():
         route="federation",
         initial_data={"agents": _list_agents(), "models": _build_current_models()},
     ))
+
+
+@app.route("/api/bootstrap/editorial")
+def get_editorial_bootstrap():
+    return jsonify(_build_editorial_bootstrap_payload())
+
+
+@app.route("/api/bootstrap/editorials")
+def get_editorials_bootstrap():
+    return jsonify(_build_editorials_bootstrap_payload())
 
 
 @app.route("/api/bootstrap/debate/<debate_id>")
@@ -244,6 +259,39 @@ def federation():
     )
 
 
+@app.route("/api/editorial", methods=["POST"])
+def editorial():
+    data = request.get_json(force=True)
+
+    def generate():
+        try:
+            for event in _run_editorial_loop(data):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+        yield 'data: {"type":"stream_end"}\n\n'
+
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/editorials/<editorial_id>/export/<export_format>")
+def export_editorial(editorial_id: str, export_format: str):
+    try:
+        content, mimetype, filename = build_editorial_export(editorial_id, export_format)
+        return send_file(
+            BytesIO(content),
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 404
+
+
 @app.route("/api/tts", methods=["POST"])
 def tts():
     body = request.get_json(silent=True) or {}
@@ -297,6 +345,22 @@ def federation_page():
             initial_data={"agents": _list_agents(), "models": _build_current_models()},
         ),
         title="POD-EXP - Federacja",
+    )
+
+
+@app.route("/editorial")
+def editorial_page():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_editorial_bootstrap_payload(),
+        title="POD-EXP - Moduł redakcyjny",
+    )
+
+
+@app.route("/editorials")
+def editorials_page():
+    return _render_frontend_shell(
+        bootstrap_payload=_build_editorials_bootstrap_payload(),
+        title="POD-EXP - Archiwum editoriali",
     )
 
 

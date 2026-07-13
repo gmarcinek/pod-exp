@@ -1,8 +1,10 @@
 export type BootstrapRoute =
   | "home"
   | "debates"
+  | "editorials"
   | "debate-view"
   | "new-debate"
+  | "editorial"
   | "federation"
   | "federation-view"
   | "agents";
@@ -32,6 +34,20 @@ export type DebateListItem = {
 
 export type DebatesBootstrapData = {
   debates: DebateListItem[];
+};
+
+export type EditorialListItem = {
+  id: string;
+  timestamp: string;
+  topic: string;
+  snippet?: string;
+  model: string;
+  provider: string;
+  cycles_completed: number;
+};
+
+export type EditorialsBootstrapData = {
+  editorials: EditorialListItem[];
 };
 
 export type DebateTranscriptEntry = {
@@ -112,6 +128,13 @@ export type DebatesBootstrapPayload = {
   initialData: DebatesBootstrapData;
 };
 
+export type EditorialsBootstrapPayload = {
+  route: "editorials";
+  apiBaseUrl: string;
+  appBasePath: string;
+  initialData: EditorialsBootstrapData;
+};
+
 export type DebateViewBootstrapPayload = {
   route: "debate-view";
   apiBaseUrl: string;
@@ -128,6 +151,10 @@ export type NewDebateBootstrapPayload = {
 
 export type FederationBootstrapData = {
   agents: string[];
+  models: ModelCatalog;
+};
+
+export type EditorialBootstrapData = {
   models: ModelCatalog;
 };
 
@@ -178,6 +205,13 @@ export type FederationBootstrapPayload = {
   initialData: FederationBootstrapData;
 };
 
+export type EditorialBootstrapPayload = {
+  route: "editorial";
+  apiBaseUrl: string;
+  appBasePath: string;
+  initialData: EditorialBootstrapData;
+};
+
 export type FederationViewBootstrapPayload = {
   route: "federation-view";
   apiBaseUrl: string;
@@ -195,8 +229,10 @@ export type AgentsBootstrapPayload = {
 export type BootstrapPayload =
   | HomeBootstrapPayload
   | DebatesBootstrapPayload
+  | EditorialsBootstrapPayload
   | DebateViewBootstrapPayload
   | NewDebateBootstrapPayload
+  | EditorialBootstrapPayload
   | FederationBootstrapPayload
   | FederationViewBootstrapPayload
   | AgentsBootstrapPayload;

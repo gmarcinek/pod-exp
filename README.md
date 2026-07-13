@@ -1,5 +1,62 @@
 # POD-EXP
 
+## Uruchomienie w Dockerze (compose)
+
+Najszybsza ścieżka — jeden plik `.env` i `docker compose up`.
+
+### 1. Konfiguracja `.env`
+
+```powershell
+Copy-Item .env.example .env
+# uzupełnij OPENAI_API_KEY i ANTHROPIC_API_KEY
+# opcjonalnie zmień port hosta, jeśli 5000 jest zajęty
+# Add-Content .env "`nAPP_PORT=5001"
+```
+
+### 2. Modele Piper (opcjonalne, tylko jeśli używasz TTS)
+
+Pobierz model głosowy do katalogu `piper_models/` (montowany jako wolumen do kontenera) — instrukcje w sekcji [TTS — synteza mowy (Piper)](#tts--synteza-mowy-piper) poniżej. Bez modelu endpoint `/api/tts` zwróci 503, ale reszta aplikacji działa normalnie.
+
+### 3. Build + start
+
+```powershell
+docker compose up --build
+```
+
+Aplikacja: `http://localhost:${APP_PORT:-5000}`
+
+Jeśli port `5000` jest zajęty przez inny proces lub kontener, dodaj do `.env`:
+
+```env
+APP_PORT=5001
+```
+
+Wtedy aplikacja będzie dostępna pod <http://localhost:5001>.
+
+### 4. Ollama (opcjonalne)
+
+Backend domyślnie łączy się z Ollamą działającą **na hoście** przez `http://host.docker.internal:11434/v1`. Jeśli Ollama działa na innym adresie — zmień `OLLAMA_BASE_URL` w `.env`.
+
+### Co jest persystowane
+
+Wolumeny zdefiniowane w `docker-compose.yml`:
+
+| Hostowy katalog  | W kontenerze        | Zawartość                                      |
+| ---------------- | ------------------- | ---------------------------------------------- |
+| `./debates`      | `/app/debates`      | snapshoty debat (zapisywane przez backend)     |
+| `./agents`       | `/app/agents`       | profile agentów (`.json`) — edytowalne na żywo |
+| `./piper_models` | `/app/piper_models` | modele głosowe Piper (read-only)               |
+
+### Architektura obrazu
+
+- Stage 1 (`node:20-alpine`) — build frontendu (Vite/React) → `frontend/dist`
+- Stage 2 (`debian:bookworm-slim`) — pobiera Piper Linux x86_64 z GitHub Releases
+- Stage 3 (`python:3.11-slim`) — runtime, gunicorn z `gthread` (działa ze streamingiem SSE)
+
+> **ARM (Mac M1/M2/M3, Raspberry Pi):** Piper x86_64 nie zadziała przez emulację dla TTS. Zmień `PIPER_ARCH` w `Dockerfile` na `aarch64` przy buildzie albo wyłącz TTS.
+
+---
+
 ## TTS — synteza mowy (Piper)
 
 Federacja może odczytywać wypowiedzi agentów na głos przy użyciu [Piper TTS](https://github.com/rhasspy/piper). TTS jest opcjonalny — włącza się checkboxem w formularzu sesji.

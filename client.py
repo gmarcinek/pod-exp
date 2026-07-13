@@ -36,6 +36,9 @@ OPENAI_MODEL_GPT54 = "gpt-5.4"
 OPENAI_MODEL_GPT54_MINI = "gpt-5.4-mini"
 OPENAI_MODEL_GPT55 = "gpt-5.5"
 OPENAI_MODEL_GPT55_MINI = "gpt-5.5-mini"
+OPENAI_MODEL_GPT56_SOL = "gpt-5.6-sol"
+OPENAI_MODEL_GPT56_TERRA = "gpt-5.6-terra"
+OPENAI_MODEL_GPT56_LUNA = "gpt-5.6-luna"
 ANTHROPIC_MODEL = "claude-opus-4-6"
 ANTHROPIC_MODEL_HAIKU = "claude-3-5-haiku-latest"
 
@@ -45,6 +48,9 @@ OPENAI_THINKING_MODELS: frozenset[str] = frozenset({
     OPENAI_MODEL_GPT54_MINI,
     OPENAI_MODEL_GPT55,
     OPENAI_MODEL_GPT55_MINI,
+    OPENAI_MODEL_GPT56_SOL,
+    OPENAI_MODEL_GPT56_TERRA,
+    OPENAI_MODEL_GPT56_LUNA,
 })
 
 OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434/v1"
@@ -322,6 +328,9 @@ def main() -> None:
             OPENAI_MODEL_GPT54_MINI,
             OPENAI_MODEL_GPT55,
             OPENAI_MODEL_GPT55_MINI,
+            OPENAI_MODEL_GPT56_SOL,
+            OPENAI_MODEL_GPT56_TERRA,
+            OPENAI_MODEL_GPT56_LUNA,
         ],
         help=f"Model OpenAI (domyślnie: {OPENAI_MODEL}).",
     )
@@ -343,7 +352,8 @@ def main() -> None:
         help=(
             "Poziom reasoning_effort dla modeli z myśleniem "
             f"({OPENAI_MODEL_GPT54}, {OPENAI_MODEL_GPT54_MINI}, "
-            f"{OPENAI_MODEL_GPT55}, {OPENAI_MODEL_GPT55_MINI}). "
+            f"{OPENAI_MODEL_GPT55}, {OPENAI_MODEL_GPT55_MINI}, "
+            f"{OPENAI_MODEL_GPT56_SOL}, {OPENAI_MODEL_GPT56_TERRA}, {OPENAI_MODEL_GPT56_LUNA}). "
             "Przy 'auto' i 'medium' automatycznie ustawia temperature=0."
         ),
     )

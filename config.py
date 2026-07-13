@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 DEBATES_DIR = Path(__file__).parent / "debates"
+EDITORIAL_DB_PATH = Path(
+    os.environ.get("EDITORIAL_DB_PATH") or Path(__file__).parent / "editorials.sqlite3"
+)
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
 FRONTEND_MANIFEST_PATH = FRONTEND_DIST_DIR / ".vite" / "manifest.json"
@@ -14,7 +18,15 @@ FRONTEND_PREVIEW_PREFIX = "/_react-preview"
 FRONTEND_LEGACY_PREFIX = "/_legacy"
 
 MODELS: dict[str, list[str]] = {
-    "openai": ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.5-mini"],
+    "openai": [
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.5",
+        "gpt-5.5-mini",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ],
     "anthropic": ["claude-opus-4-6", "claude-opus-4-8", "claude-3-5-haiku-latest"],
     "ollama": [],
 }

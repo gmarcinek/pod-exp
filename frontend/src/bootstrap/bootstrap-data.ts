@@ -11,6 +11,9 @@ import type {
   DebateTranscriptEntry,
   DebatesBootstrapData,
   DebateViewBootstrapData,
+  EditorialListItem,
+  EditorialsBootstrapData,
+  EditorialBootstrapData,
   FederationBootstrapData,
   FederationViewBootstrapData,
   FederationViewRecord,
@@ -49,6 +52,10 @@ const defaultHomeData: HomeBootstrapData = {
 
 const defaultDebatesData: DebatesBootstrapData = {
   debates: [],
+};
+
+const defaultEditorialsData: EditorialsBootstrapData = {
+  editorials: [],
 };
 
 const defaultNewDebateData: NewDebateBootstrapData = {
@@ -127,6 +134,21 @@ function isDebateListItem(value: unknown): value is DebateListItem {
   );
 }
 
+function isEditorialListItem(value: unknown): value is EditorialListItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.timestamp === "string" &&
+    typeof value.topic === "string" &&
+    typeof value.model === "string" &&
+    typeof value.provider === "string" &&
+    typeof value.cycles_completed === "number"
+  );
+}
+
 function isTranscriptEntry(value: unknown): value is DebateTranscriptEntry {
   if (!isRecord(value)) {
     return false;
@@ -169,8 +191,10 @@ function parseRoute(value: unknown): BootstrapRoute {
   if (
     value === "home" ||
     value === "debates" ||
+    value === "editorials" ||
     value === "debate-view" ||
     value === "new-debate" ||
+    value === "editorial" ||
     value === "federation" ||
     value === "federation-view" ||
     value === "agents"
@@ -242,6 +266,16 @@ function parseDebatesData(value: unknown): DebatesBootstrapData {
 
   return {
     debates: value.debates.filter(isDebateListItem),
+  };
+}
+
+function parseEditorialsData(value: unknown): EditorialsBootstrapData {
+  if (!isRecord(value) || !Array.isArray(value.editorials)) {
+    return defaultEditorialsData;
+  }
+
+  return {
+    editorials: value.editorials.filter(isEditorialListItem),
   };
 }
 
@@ -325,12 +359,28 @@ function createDefaultPayload(route: BootstrapRoute): BootstrapPayload {
         appBasePath: "",
         initialData: defaultDebatesData,
       };
+    case "editorials":
+      return {
+        route,
+        apiBaseUrl: "",
+        appBasePath: "",
+        initialData: defaultEditorialsData,
+      };
     case "new-debate":
       return {
         route,
         apiBaseUrl: "",
         appBasePath: "",
         initialData: defaultNewDebateData,
+      };
+    case "editorial":
+      return {
+        route,
+        apiBaseUrl: "",
+        appBasePath: "",
+        initialData: {
+          models: {},
+        },
       };
     case "debate-view":
       return {
@@ -346,7 +396,7 @@ function createDefaultPayload(route: BootstrapRoute): BootstrapPayload {
         appBasePath: "",
         initialData: {
           agents: [],
-          models: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.5-mini"],
+          models: {},
         },
       };
     case "federation-view":
@@ -395,12 +445,20 @@ export function getBootstrapRouteFromPathname(
     return "debates";
   }
 
+  if (routePath === "/editorials") {
+    return "editorials";
+  }
+
   if (routePath.startsWith("/debate/") || routePath.startsWith("/debates/")) {
     return "debate-view";
   }
 
   if (routePath === "/federation") {
     return "federation";
+  }
+
+  if (routePath === "/editorial") {
+    return "editorial";
   }
 
   if (routePath.startsWith("/federation/")) {
@@ -516,6 +574,13 @@ export function parseBootstrapPayload(payload: unknown): BootstrapPayload {
         appBasePath,
         initialData: parseDebatesData(payload.initialData),
       };
+    case "editorials":
+      return {
+        route,
+        apiBaseUrl,
+        appBasePath,
+        initialData: parseEditorialsData(payload.initialData),
+      };
     case "new-debate":
       return {
         route,
@@ -523,6 +588,16 @@ export function parseBootstrapPayload(payload: unknown): BootstrapPayload {
         appBasePath,
         initialData: parseNewDebateData(payload.initialData),
       };
+    case "editorial": {
+      const ed = payload.initialData;
+      const editorialData: EditorialBootstrapData = {
+        models:
+          isRecord(ed) && isModelCatalog((ed as Record<string, unknown>).models)
+            ? ((ed as Record<string, unknown>).models as ModelCatalog)
+            : {},
+      };
+      return { route, apiBaseUrl, appBasePath, initialData: editorialData };
+    }
     case "debate-view":
       return {
         route,

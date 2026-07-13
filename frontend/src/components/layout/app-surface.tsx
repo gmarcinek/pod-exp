@@ -31,8 +31,10 @@ export function AppSurface({
 
   if (
     currentRoute === "debates" ||
+    currentRoute === "editorials" ||
     currentRoute === "debate-view" ||
     currentRoute === "new-debate" ||
+    currentRoute === "editorial" ||
     currentRoute === "federation" ||
     currentRoute === "federation-view" ||
     currentRoute === "agents"

@@ -6,6 +6,10 @@ __pycache__/
 .env.*
 !.env.example
 debates/
+editorials.sqlite3
+editorials.sqlite3-shm
+editorials.sqlite3-wal
+editorial-data/
 frontend/node_modules/
 frontend/dist/
 

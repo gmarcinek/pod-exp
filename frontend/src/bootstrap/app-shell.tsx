@@ -17,8 +17,12 @@ function getBootstrapEndpoint(bootstrap: BootstrapPayload): string | null {
   switch (bootstrap.route) {
     case "debates":
       return "/api/bootstrap/debates";
+    case "editorials":
+      return "/api/bootstrap/editorials";
     case "new-debate":
       return "/api/bootstrap/newDebate";
+    case "editorial":
+      return "/api/bootstrap/editorial";
     case "debate-view": {
       const debateId = getDebateIdFromPathname(
         window.location.pathname,
@@ -52,8 +56,12 @@ function getBootstrapFailureMessage(route: BootstrapPayload["route"]): string {
   switch (route) {
     case "debates":
       return "Nie udało się pobrać archiwum debat w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/debates` odpowiada lokalnie.";
+    case "editorials":
+      return "Nie udało się pobrać listy editoriali w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/editorials` odpowiada lokalnie.";
     case "new-debate":
       return "Nie udało się pobrać placeholdera nowej debaty w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/newDebate` odpowiada lokalnie.";
+    case "editorial":
+      return "Nie udało się załadować modułu redakcyjnego w trybie dev. Sprawdź, czy `/api/bootstrap/editorial` odpowiada lokalnie.";
     case "debate-view":
       return "Nie udało się pobrać danych debaty w trybie dev. Uruchom Flask backend albo sprawdź, czy `/api/bootstrap/debate/<debate_id>` odpowiada lokalnie.";
     case "federation":

@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import request
 
 from models_catalog import _build_current_models
-from storage import _list_agents, _load_debate_record, _load_debates_index
+from storage import _list_agents, _load_debate_record, _load_debates_index, _load_editorials_index
 
 
 def _build_bootstrap_payload(*, route: str, initial_data: dict, app_base_path: str = "") -> dict:
@@ -44,6 +44,26 @@ def _build_new_debate_bootstrap_payload(*, app_base_path: str = "") -> dict:
         initial_data={
             "agents": _list_agents(),
             "models": _build_current_models(),
+        },
+    )
+
+
+def _build_editorial_bootstrap_payload(*, app_base_path: str = "") -> dict:
+    return _build_bootstrap_payload(
+        route="editorial",
+        app_base_path=app_base_path,
+        initial_data={
+            "models": _build_current_models(),
+        },
+    )
+
+
+def _build_editorials_bootstrap_payload(*, app_base_path: str = "") -> dict:
+    return _build_bootstrap_payload(
+        route="editorials",
+        app_base_path=app_base_path,
+        initial_data={
+            "editorials": _load_editorials_index(),
         },
     )
 

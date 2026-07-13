@@ -1,0 +1,445 @@
+.page {
+  min-height: 100vh;
+  padding: 40px 24px 64px;
+  background:
+    radial-gradient(circle at top left, rgba(231, 195, 120, 0.16), transparent 32%),
+    radial-gradient(circle at top right, rgba(127, 169, 214, 0.16), transparent 28%),
+    linear-gradient(180deg, #121212 0%, #0a0a0a 100%);
+  color: #8f8f8f;
+}
+
+.shell {
+  max-width: 1660px;
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+}
+
+.hero {
+  display: grid;
+  gap: 12px;
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+  color: #d2b36a;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 0.96;
+}
+
+.copy {
+  margin: 0;
+  max-width: 840px;
+  color: rgba(244, 241, 232, 0.78);
+  line-height: 1.6;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 24px;
+}
+
+.panel {
+  border: 1px solid rgba(244, 241, 232, 0.1);
+  border-radius: 24px;
+  background: rgba(22, 22, 22, 0.92);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.form {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.checkboxField {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  color: rgba(244, 241, 232, 0.82);
+  line-height: 1.4;
+}
+
+.checkboxField small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(244, 241, 232, 0.56);
+  font-size: 12px;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #d2b36a;
+}
+
+.label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(244, 241, 232, 0.62);
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  border: 1px solid rgba(244, 241, 232, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #8f8f8f;
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.textInput {
+  min-height: 360px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.button,
+.ghostButton {
+  border-radius: 999px;
+  padding: 12px 18px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.button {
+  border: 0;
+  background: linear-gradient(135deg, #d2b36a 0%, #f0dcaf 100%);
+  color: #161616;
+  font-weight: 700;
+}
+
+.ghostButton {
+  border: 1px solid rgba(244, 241, 232, 0.16);
+  background: transparent;
+  color: #8f8f8f;
+}
+
+.button:disabled,
+.ghostButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.workspace {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.statusBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.statusPill {
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(244, 241, 232, 0.06);
+  color: rgba(244, 241, 232, 0.8);
+  font-size: 13px;
+}
+
+.entries {
+  display: grid;
+  gap: 12px;
+}
+
+.workflowBoard {
+  display: grid;
+  gap: 18px;
+  padding: 4px 0;
+}
+
+.boardHeader,
+.workflowItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.boardHeader {
+  color: rgba(244, 241, 232, 0.62);
+  font-size: 13px;
+}
+
+.workflowGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.workflowGroup h2 {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.7);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workflowList,
+.effectList {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid rgba(244, 241, 232, 0.08);
+}
+
+.workflowItem,
+.effectList li {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(244, 241, 232, 0.08);
+}
+
+.workflowItem strong {
+  display: block;
+  color: rgba(244, 241, 232, 0.9);
+  font-size: 14px;
+}
+
+.workflowItem small {
+  display: block;
+  max-width: 560px;
+  margin-top: 3px;
+  color: rgba(244, 241, 232, 0.56);
+  line-height: 1.4;
+}
+
+.statusPlanned,
+.statusWorking,
+.statusVerified,
+.statusDone,
+.statusProposed,
+.statusAccepted,
+.statusRejected {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.statusPlanned,
+.statusProposed {
+  background: rgba(210, 179, 106, 0.15);
+  color: #d2b36a;
+}
+
+.pendingStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  animation: pendingPulse 1.4s ease-in-out infinite;
+}
+
+.pendingStatus::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.pendingText {
+  animation: pendingPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pendingPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.statusWorking {
+  background: rgba(127, 169, 214, 0.16);
+  color: #9dc6f0;
+}
+
+.statusVerified,
+.statusDone,
+.statusAccepted {
+  background: rgba(118, 192, 139, 0.16);
+  color: #9bdcae;
+}
+
+.statusRejected {
+  background: rgba(232, 120, 120, 0.15);
+  color: #ffabab;
+}
+
+.planCheckbox {
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.planCheckboxCompleted {
+  color: #9bdcae;
+}
+
+.toolStatusList {
+  color: rgba(244, 241, 232, 0.46);
+  font-size: 11px;
+}
+
+.toolStatusList li {
+  padding: 6px 0;
+}
+
+.toolStatusList strong {
+  color: rgba(244, 241, 232, 0.56);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.toolStatusList small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(244, 241, 232, 0.36);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.entry {
+  border: 1px solid rgba(244, 241, 232, 0.08);
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.entryMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: rgba(244, 241, 232, 0.62);
+}
+
+.entryLabel {
+  font-weight: 700;
+  color: #8f8f8f;
+}
+
+.entryContent,
+.finalText {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  color: rgba(244, 241, 232, 0.88);
+}
+
+.finalCard {
+  border-top: 1px solid rgba(244, 241, 232, 0.08);
+  padding-top: 8px;
+}
+
+.exportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.resultActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(244, 241, 232, 0.08);
+  border-bottom: 1px solid rgba(244, 241, 232, 0.08);
+}
+
+.resultActions .exportActions {
+  margin-top: 0;
+}
+
+.error {
+  color: #ff8f8f;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pendingStatus,
+  .pendingText {
+    animation: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+  }
+
+  .boardHeader,
+  .workflowItem {
+    gap: 10px;
+  }
+}
+
+.handoff {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(244, 241, 232, 0.08);
+  border-bottom: 1px solid rgba(244, 241, 232, 0.08);
+}
+
+.handoff p,
+.emptyState {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.82);
+  line-height: 1.5;
+}
+
+.handoff small,
+.emptyState {
+  color: rgba(244, 241, 232, 0.56);
+  line-height: 1.4;
+}

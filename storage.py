@@ -27,6 +27,8 @@ def _load_debates_index() -> list[dict]:
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
             record_type = str(data.get("type") or "debate")
+            if record_type == "edit":
+                continue
             topic = str(data.get("topic") or "").strip()
             summary = str(data.get("summary") or "").strip()
             snippet_src = summary or topic
@@ -50,6 +52,37 @@ def _load_debates_index() -> list[dict]:
         except Exception:
             pass
     return debates
+
+
+def _load_editorials_index() -> list[dict]:
+    files = sorted(DEBATES_DIR.glob("*.json"), reverse=True) if DEBATES_DIR.exists() else []
+    editorials: list[dict] = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if str(data.get("type") or "") != "edit":
+                continue
+            topic = str(data.get("topic") or "").strip()
+            summary = str(
+                data.get("summary")
+                or data.get("final_text")
+                or data.get("original_text")
+                or ""
+            ).strip()
+            snippet = (summary[:220] + "…") if len(summary) > 220 else summary
+            editorials.append({
+                "id": str(data.get("id") or ""),
+                "timestamp": str(data.get("timestamp") or ""),
+                "topic": topic,
+                "snippet": snippet,
+                "model": str(data.get("model") or ""),
+                "provider": str(data.get("provider") or ""),
+                "status": str(data.get("status") or "completed"),
+                "cycles_completed": int(data.get("cycles_completed") or 0),
+            })
+        except Exception:
+            pass
+    return editorials
 
 
 def _load_debate_record(debate_id: str) -> dict | None:

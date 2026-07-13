@@ -63,7 +63,8 @@ from tts_service import run_piper_tts
 from frontend_service import _render_frontend_shell, _render_legacy_template
 from live_notes import _empty_live_notes
 from models_catalog import _build_current_models
-from storage import _list_agents, _load_debate_record, _load_debates_index, _write_debate_snapshot
+from storage import _list_agents, _load_debate_record, _load_debates_index, _load_editorial_by_process_id, _write_debate_snapshot
+from editorial_store import assemble_editorial_document
 
 app = Flask(__name__)
 
@@ -276,6 +277,32 @@ def editorial():
         content_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.route("/api/editorial-process/<process_id>")
+def get_editorial_process(process_id: str):
+    record = _load_editorial_by_process_id(process_id)
+    if record is None:
+        return jsonify({"error": "Nie znaleziono procesu redakcyjnego."}), 404
+
+    document = record.get("document_storage")
+    current = document.get("current") if isinstance(document, dict) else None
+    version = current.get("version") if isinstance(current, dict) else None
+    final_text = (
+        assemble_editorial_document(editorial_id=str(record.get("id") or ""), version=version)
+        if isinstance(version, int)
+        else None
+    )
+    return jsonify({
+        "id": record.get("id"),
+        "process_id": record.get("process_id"),
+        "title": record.get("topic"),
+        "status": record.get("status"),
+        "cycles_completed": record.get("cycles_completed", 0),
+        "summary": record.get("summary", ""),
+        "workflow": record.get("workflow", {}),
+        "final_text": final_text or "",
+    })
 
 
 @app.route("/api/editorials/<editorial_id>/export/<export_format>")

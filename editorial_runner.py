@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from client import (
     ANTHROPIC_MODEL,
@@ -22,6 +23,8 @@ EDITORIAL_DEFAULT_MAX_TOKENS = 4096
 EDITORIAL_ANALYSIS_HISTORY_LIMIT = 20
 EDITORIAL_DEFAULT_READ_WINDOW_LINES = 200
 EDITORIAL_MAX_READ_WINDOW_LINES = 2000
+EDITORIAL_MAX_EXECUTION_TASKS = 24
+EDITORIAL_SHORT_DOCUMENT_PLANNER_LINES = 120
 EDITORIAL_READING_MODES = {"exhaustive", "range", "search"}
 EDITORIAL_READING_TOOLS = {"read_lines", "jump_to_line", "search_text"}
 HANDOFF_MARKERS = {"[FAKT]", "[HIPOTEZA]", "[INTERPRETACJA]", "[PYTANIE]", "[DECYZJA AUTORA]"}
@@ -161,8 +164,16 @@ Otrzymujesz końcowy handoff z sekwencyjnego rozpoznania dokumentu, nie pełny t
 podmian ani nie oceniasz poszczególnych zdań. Rozpoznaj wyłącznie warstwy, które rzeczywiście
 wymagają sprawdzenia, i ułóż minimalny plan pracy dla kolejnych porcji tekstu. Warstwa jest potrzebna
 tylko wtedy, gdy konkretny problem może przez nią przebiegać; nie planuj kontroli dla formalności.
-Każdy wpis reading_protocol musi jawnie określać cel czytania, tryb i narzędzie. Zwróć wyłącznie JSON:
-{"document_handoff":{"summary":"krótka mapa całości","continuity":["L12-L18 [FAKT] fakt lub relacja do zachowania"],"voice":["L42-L57 [INTERPRETACJA] cecha głosu autora"],"open_questions":["L88 [PYTANIE] nierozstrzygnięta kwestia"]},"whole_text_notes":["krótka obserwacja"],"layers":[{"id":"continuity","label":"Ciągłość zdarzeń","reason":"co sprawdzić między porcjami","priority":1}],"reading_protocol":[{"mode":"range","purpose":"sprawdzić ciągłość między L201-L400","tool":"read_lines","line_start":201,"line_end":400,"handoff_goal":"przekazać ustalenia potrzebne następnej porcji"}],"handoff_notes":["L12-L18 [FAKT] polecenie dla kolejnych porcji"]}
+Każdy wpis reading_protocol musi jawnie określać cel czytania, tryb i narzędzie. Następnie wybierz
+wyłącznie zakresy wymagające faktycznej redakcji jako execution_tasks. Nie planuj pełnego dokumentu
+dla formalności: możesz wskazać np. L400-L520 i L1140-L1260, gdy tylko one wymagają pracy. Każde
+zadanie ma mieć 1-3 warstwy z listy layers. Zwróć wyłącznie JSON:
+{"document_handoff":{"summary":"krótka mapa całości","continuity":["L12-L18 [FAKT] fakt lub relacja do zachowania"],"voice":["L42-L57 [INTERPRETACJA] cecha głosu autora"],"open_questions":["L88 [PYTANIE] nierozstrzygnięta kwestia"]},"whole_text_notes":["krótka obserwacja"],"layers":[{"id":"continuity","label":"Ciągłość zdarzeń","reason":"co sprawdzić między porcjami","priority":1}],"reading_protocol":[{"mode":"range","purpose":"sprawdzić ciągłość między L201-L400","tool":"read_lines","line_start":201,"line_end":400,"handoff_goal":"przekazać ustalenia potrzebne następnej porcji"}],"execution_tasks":[{"id":"task-1","line_start":400,"line_end":520,"layers":["continuity"],"purpose":"zweryfikować przejście pojęciowe i ewentualnie przygotować lokalne patche"}],"handoff_notes":["L12-L18 [FAKT] polecenie dla kolejnych porcji"]}
+
+Jeżeli wiadomość zawiera sekcję KRÓTKI DOKUMENT DO INSPEKCJI, jest to dodatkowy dowód, który możesz
+oceniać na poziomie pojedynczych zdań. Dokument w całości może być wtedy jednym zadaniem tylko dlatego,
+że mieści się w tym małym, zamkniętym zakresie. Wybierz takie zadanie wyłącznie dla konkretnej,
+cytowalnej usterki; nie udawaj problemów ani nie proponuj patchy na tym etapie.
 """
 ).strip()
 
@@ -244,6 +255,20 @@ Zwróć wyłącznie JSON:
 {"assessment":{"verdict":"plus|minus|mixed|neutral","scope":"krótka ocena skali pracy","reason":"bilans zysku i strat","contradictions":["konkretna sprzeczność lub []"]},"verdicts":[{"id":"p1","decision":"KEEP" lub "REVERT","reason":"konkretna decyzja w świetle kontekstu i rejestru"}]}
 """
 ).strip()
+
+EDITORIAL_SUMMARIZER_INSTRUCTION = """
+Jesteś redaktorem sporządzającym końcową notę z procesu redakcyjnego. Otrzymujesz wyłącznie
+plan, zadania zakresowe i ich artefakty: decyzje o patchach oraz oceny integralności. Nie dostajesz
+tekstu dokumentu i nie wolno ci dopowiadać zmian, cytatów, problemów ani efektów, których nie ma w
+danych. Napisz po polsku krótkie podsumowanie dla autora: 2-4 zdania, zwykły tekst bez tytułu,
+markdownu, list i technicznych identyfikatorów. Powiedz, jakie zakresy i warstwy sprawdzono, co
+zostało zastosowane albo świadomie pozostawione oraz dlaczego, jeśli wynika to z assessmentów.
+Jeżeli nie zastosowano patchy, nazwij to zachowawczą decyzją wynikającą z walidacji, a nie brakiem
+pracy. Rozróżniaj źródło decyzji: brak proposed_patch_ids oznacza, że Rewriter nie zaproponował
+bezpiecznej ingerencji; proposed_patch_ids przy braku accepted_patch_ids oznacza odrzucenie przez
+walidację albo weryfikację integralności. Nie przypisuj braku propozycji walidacji. Nie podawaj
+samych liczników jako substytutu podsumowania.
+""".strip()
 
 
 def _call_editorial_role(
@@ -639,7 +664,7 @@ def _split_editorial_sections(text: str) -> list[dict[str, object]]:
     return sections
 
 
-def _normalize_editorial_plan(payload: dict[str, object]) -> dict[str, object]:
+def _normalize_editorial_plan(payload: dict[str, object], *, total_lines: int) -> dict[str, object]:
     raw_layers = payload.get("layers")
     layers: list[dict[str, object]] = []
     seen_layer_ids: set[str] = set()
@@ -702,6 +727,47 @@ def _normalize_editorial_plan(payload: dict[str, object]) -> dict[str, object]:
                 "handoff_goal": handoff_goal,
             })
 
+    execution_tasks: list[dict[str, object]] = []
+    raw_tasks = payload.get("execution_tasks")
+    seen_task_ids: set[str] = set()
+    if isinstance(raw_tasks, list):
+        for index, raw_task in enumerate(raw_tasks, start=1):
+            if len(execution_tasks) >= EDITORIAL_MAX_EXECUTION_TASKS or not isinstance(raw_task, dict):
+                continue
+            task_id = str(raw_task.get("id") or f"task-{index}").strip().lower()
+            line_start = raw_task.get("line_start")
+            line_end = raw_task.get("line_end")
+            raw_task_layers = raw_task.get("layers")
+            task_layers = [
+                str(layer).strip().lower()
+                for layer in raw_task_layers
+                if str(layer).strip().lower() in EDITORIAL_LAYERS
+            ] if isinstance(raw_task_layers, list) else []
+            purpose = str(raw_task.get("purpose") or "").strip()[:500]
+            if (
+                not task_id
+                or task_id in seen_task_ids
+                or not isinstance(line_start, int)
+                or not isinstance(line_end, int)
+                or line_start < 1
+                or line_end < line_start
+                or line_end > total_lines
+                or line_end - line_start + 1 > EDITORIAL_MAX_READ_WINDOW_LINES
+                or not task_layers
+                or not purpose
+            ):
+                continue
+            seen_task_ids.add(task_id)
+            execution_tasks.append({
+                "id": task_id,
+                "line_start": line_start,
+                "line_end": line_end,
+                "layers": list(dict.fromkeys(task_layers))[:3],
+                "purpose": purpose,
+                "status": "planned",
+                "artifacts": [],
+            })
+
     return {
         "document_handoff": {
             "summary": str(handoff.get("summary") or "").strip()[:1000],
@@ -712,8 +778,55 @@ def _normalize_editorial_plan(payload: dict[str, object]) -> dict[str, object]:
         "whole_text_notes": notes("whole_text_notes"),
         "layers": sorted(layers, key=lambda layer: int(layer["priority"])),
         "reading_protocol": reading_protocol,
+        "execution_tasks": execution_tasks,
         "handoff_notes": _normalize_marked_notes(payload.get("handoff_notes"), "[FAKT]"),
     }
+
+
+def _ensure_short_document_execution_task(
+    plan: dict[str, object],
+    *,
+    total_lines: int,
+) -> None:
+    if (
+        total_lines > EDITORIAL_SHORT_DOCUMENT_PLANNER_LINES
+        or not isinstance(plan.get("execution_tasks"), list)
+        or plan["execution_tasks"]
+    ):
+        return
+
+    layers = plan.get("layers")
+    if not isinstance(layers, list):
+        layers = []
+        plan["layers"] = layers
+    existing_layer_ids = {
+        str(layer.get("id") or "")
+        for layer in layers
+        if isinstance(layer, dict)
+    }
+    for layer_id, label, reason, priority in (
+        ("language", "Język i interpunkcja", "Sprawdzić lokalne usterki składniowe, językowe i interpunkcyjne.", 1),
+        ("register", "Rejestr", "Sprawdzić tylko konkretne regresje rejestru, bez normalizowania głosu autora.", 2),
+    ):
+        if layer_id not in existing_layer_ids:
+            layers.append({
+                "id": layer_id,
+                "label": label,
+                "reason": reason,
+                "priority": priority,
+            })
+    plan["execution_tasks"].append({
+        "id": "task-short-document-baseline",
+        "line_start": 1,
+        "line_end": total_lines,
+        "layers": ["language", "register"],
+        "purpose": (
+            "Wykonać ograniczoną kontrolę lokalnych usterek językowych, składniowych i interpunkcyjnych "
+            "w krótkim, zamkniętym dokumencie; zachować głos autora i nie tworzyć zmian bez konkretnej podstawy."
+        ),
+        "status": "planned",
+        "artifacts": [],
+    })
 
 
 def _normalize_document_handoff(payload: dict[str, object]) -> dict[str, object]:
@@ -783,6 +896,104 @@ def _build_patchset(raw_patches: list[dict[str, object]]) -> list[dict[str, obje
     return patches
 
 
+def _task_text(text: str, line_start: int, line_end: int) -> str:
+    return "".join(text.splitlines(keepends=True)[line_start - 1:line_end])
+
+
+def _role_specs_for_layers(layers: list[str]) -> list[dict[str, str]]:
+    selected = {"marker"}
+    if any(layer in {"continuity", "logic", "reference"} for layer in layers):
+        selected.add("coherence_guard")
+    if any(layer in {"language", "register", "repetition"} for layer in layers):
+        selected.add("critic")
+    return [spec for spec in ROLE_SPECS if spec["key"] in selected]
+
+
+def _scope_patch_ids(patches: list[dict[str, object]], task_id: str) -> list[dict[str, object]]:
+    scoped: list[dict[str, object]] = []
+    for patch in patches:
+        scoped.append({
+            **patch,
+            "id": f"{task_id}:{patch['id']}",
+            "variants": [
+                {"id": f"{task_id}:{variant['id']}", "replacement": variant["replacement"]}
+                for variant in patch["variants"]
+            ],
+        })
+    return scoped
+
+
+def _normalize_patch_decision_ids(
+    verdicts: list[dict[str, object]],
+    patches: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    def resolve_id(raw_id: object, available_ids: set[str]) -> str:
+        value = str(raw_id or "").strip()
+        if value in available_ids:
+            return value
+        matches = [candidate for candidate in available_ids if candidate.endswith(f":{value}")]
+        return matches[0] if len(matches) == 1 else value
+
+    patch_ids = {str(patch["id"]) for patch in patches}
+    normalized: list[dict[str, object]] = []
+    for verdict in verdicts:
+        patch_id = resolve_id(verdict.get("id"), patch_ids)
+        selected_variant_id = verdict.get("selected_variant_id")
+        patch = next((item for item in patches if item["id"] == patch_id), None)
+        if patch is not None and selected_variant_id:
+            variant_ids = {str(variant["id"]) for variant in patch["variants"]}
+            selected_variant_id = resolve_id(selected_variant_id, variant_ids)
+        normalized.append({
+            **verdict,
+            "id": patch_id,
+            "selected_variant_id": selected_variant_id,
+        })
+    return normalized
+
+
+def _patches_in_task(
+    patches: list[dict[str, object]],
+    *,
+    current_text: str,
+    task_text: str,
+) -> list[dict[str, object]]:
+    return [
+        patch
+        for patch in patches
+        if current_text.count(str(patch["source"])) == 1
+        and task_text.count(str(patch["source"])) == 1
+    ]
+
+
+def _build_task_context(
+    *,
+    title: str,
+    brief: str,
+    cycle: int,
+    task: dict[str, object],
+    document_handoff: dict[str, object],
+    text: str,
+    clean_model_signatures: bool,
+) -> str:
+    parts = [
+        f"TYTUŁ/PROJEKT: {title or 'Bez tytułu'}",
+        f"ITERACJA: {cycle}",
+        f"ZADANIE: {task['id']} | LINIE L{task['line_start']}-L{task['line_end']}",
+        "WARSTWY: " + ", ".join(str(layer) for layer in task["layers"]),
+        f"CEL: {task['purpose']}",
+        "HANDOFF DOKUMENTU:\n" + json.dumps(document_handoff, ensure_ascii=False),
+    ]
+    if clean_model_signatures:
+        parts.append(CLEAN_MODEL_SIGNATURES_INSTRUCTION)
+    if brief:
+        parts.append(f"BRIEF REDAKCYJNY:\n{brief}")
+    parts.append(
+        "FRAGMENT DO ANALIZY I REDAKCJI:\n"
+        + _numbered_editorial_lines(text, int(task["line_start"]), int(task["line_end"]))
+    )
+    return "\n\n".join(parts)
+
+
 def _replacement_has_obvious_regression(source: str, replacement: str) -> bool:
     source_lower = source.lower()
     replacement_lower = replacement.lower()
@@ -837,6 +1048,9 @@ def _apply_accepted_patches(
         if _replacement_has_obvious_regression(source, replacement):
             rejected.append({**patch, "reason": "Wybrany wariant wprowadza oczywistą regresję stylistyczną lub powtórzenie."})
             continue
+        if source.count("\n") != replacement.count("\n"):
+            rejected.append({**patch, "reason": "Patch zmienia liczbę linii i unieważniłby zakresy zaplanowanych zadań."})
+            continue
         occurrences = text.count(source)
         if occurrences != 1:
             rejected.append({**patch, "reason": "Cytat źródłowy nie występuje dokładnie raz w tekście."})
@@ -872,12 +1086,120 @@ def _resolve_editorial_max_tokens(value: object, provider: str) -> int:
     return max(512, min(int(raw), provider_limit))
 
 
-def _build_editorial_summary(*, title: str, cycles_completed: int, final_text: str) -> str:
-    normalized_text = " ".join(final_text.split())
-    excerpt = normalized_text[:220].rstrip()
-    if len(normalized_text) > len(excerpt):
-        excerpt += "…"
-    return f"{title}: {cycles_completed} iter. {excerpt}" if excerpt else title
+def _build_editorial_summary_fallback(
+    *,
+    title: str,
+    cycles_completed: int,
+    execution_log: list[dict[str, object]],
+) -> str:
+    task_runs = [
+        entry
+        for entry in execution_log
+        if entry.get("event") == "task_application" and entry.get("status") == "completed"
+    ]
+    accepted_count = sum(len(entry.get("accepted_patches") or []) for entry in task_runs)
+    rejected_count = sum(len(entry.get("rejected_patches") or []) for entry in task_runs)
+    cycle_label = "iterację" if cycles_completed == 1 else "iteracje"
+    return (
+        f"{title}: zakończono {cycles_completed} {cycle_label}, "
+        f"zadania zakresowe: {len(task_runs)}, zastosowano "
+        f"{accepted_count} zatwierdzonych patchy i odrzucono {rejected_count}."
+    )
+
+
+def _build_editorial_summary_message(
+    *,
+    title: str,
+    brief: str,
+    cycles_completed: int,
+    plan: dict[str, object],
+) -> str:
+    tasks = plan.get("execution_tasks")
+    task_artifacts = []
+    if isinstance(tasks, list):
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            task_artifacts.append({
+                "id": task.get("id"),
+                "line_start": task.get("line_start"),
+                "line_end": task.get("line_end"),
+                "layers": task.get("layers"),
+                "purpose": task.get("purpose"),
+                "artifacts": task.get("artifacts", []),
+            })
+    return "\n\n".join([
+        f"TYTUŁ: {title}",
+        f"BRIEF: {brief or 'brak dodatkowego briefu'}",
+        f"UKOŃCZONE ITERACJE: {cycles_completed}",
+        "WARSTWY PLANU:\n" + json.dumps(plan.get("layers", []), ensure_ascii=False),
+        "UWAGI CAŁOŚCIOWE:\n" + json.dumps(plan.get("whole_text_notes", []), ensure_ascii=False),
+        "ARTEFAKTY ZADAŃ:\n" + json.dumps(task_artifacts, ensure_ascii=False),
+    ])
+
+
+def _replace_adaptive_execution_steps(
+    adaptive_plan: dict[str, object],
+    plan: dict[str, object],
+) -> None:
+    steps = adaptive_plan.get("steps")
+    if not isinstance(steps, list):
+        return
+    lifecycle_steps = [
+        step
+        for step in steps
+        if isinstance(step, dict) and str(step.get("id") or "") != "layers"
+    ]
+    tasks = plan.get("execution_tasks")
+    execution_steps: list[dict[str, object]] = []
+    if isinstance(tasks, list):
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            task_id = str(task.get("id") or "").strip()
+            if not task_id:
+                continue
+            execution_steps.append({
+                "id": f"execution:{task_id}",
+                "label": f"{task_id} | L{task.get('line_start')}-L{task.get('line_end')}",
+                "purpose": str(task.get("purpose") or ""),
+                "conclusion": "Wybrane przez Planistę na podstawie handoffu dokumentu.",
+                "status": "planned",
+            })
+    if not execution_steps:
+        execution_steps.append({
+            "id": "no_execution_tasks",
+            "label": "Pozostawić dokument bez ingerencji",
+            "purpose": "Planista nie wskazał zakresu z bezsporną podstawą do lokalnej redakcji.",
+            "conclusion": "Brak zadań zakresowych jest decyzją planu, nie pominiętym krokiem.",
+            "status": "completed",
+        })
+    adaptive_plan["steps"] = [*lifecycle_steps, *execution_steps]
+
+
+def _update_adaptive_execution_step(
+    adaptive_plan: dict[str, object],
+    *,
+    task_id: str,
+    status: str,
+    conclusion: str,
+) -> None:
+    steps = adaptive_plan.get("steps")
+    if not isinstance(steps, list):
+        return
+    for step in steps:
+        if isinstance(step, dict) and step.get("id") == f"execution:{task_id}":
+            step["status"] = status
+            step["conclusion"] = conclusion
+            return
+
+
+def _adaptive_plan_event(*, edit_id: str, adaptive_plan: dict[str, object]) -> dict[str, object]:
+    return {
+        "type": "editorial_adaptive_plan",
+        "id": edit_id,
+        "adaptive_plan": json.loads(json.dumps(adaptive_plan)),
+    }
 
 
 def _run_editorial_loop(data: dict):
@@ -898,6 +1220,7 @@ def _run_editorial_loop(data: dict):
         raise ValueError("Brak tekstu do opracowania.")
 
     edit_id = _generate_debate_id()
+    process_id = str(uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
     current_text = original_text
     source_manifest = store_editorial_document(
@@ -909,7 +1232,13 @@ def _run_editorial_loop(data: dict):
     transcript: list[dict[str, str | int]] = []
     historical_outputs: list[dict[str, str | int]] = []
     execution_log: list[dict[str, object]] = []
+    editorial_summary = _build_editorial_summary_fallback(
+        title=title,
+        cycles_completed=0,
+        execution_log=execution_log,
+    )
     workflow: dict[str, object] = {
+        "process_id": process_id,
         "mode": "adaptive",
         "status": "planning",
         "plan": {},
@@ -960,11 +1289,13 @@ def _run_editorial_loop(data: dict):
         role: str,
         system_prompt: str,
         messages: list[dict[str, str]],
+        max_tokens_override: int | None = None,
     ) -> str:
+        role_max_tokens = max_tokens_override or max_tokens
         request = {
             "provider": provider,
             "model": model,
-            "max_tokens": max_tokens,
+            "max_tokens": role_max_tokens,
             "system_prompt": system_prompt,
             "messages": messages,
         }
@@ -972,7 +1303,7 @@ def _run_editorial_loop(data: dict):
             response = _call_editorial_role(
                 provider=provider,
                 model=model,
-                max_tokens=max_tokens,
+                max_tokens=role_max_tokens,
                 system_prompt=system_prompt,
                 messages=messages,
             )
@@ -1010,6 +1341,7 @@ def _run_editorial_loop(data: dict):
     def build_record(*, cycles_completed: int, status: str, error: str | None = None) -> dict:
         record = {
             "id": edit_id,
+            "process_id": process_id,
             "type": "edit",
             "status": status,
             "timestamp": started_at,
@@ -1024,11 +1356,7 @@ def _run_editorial_loop(data: dict):
                 "source": source_manifest,
                 "current": current_manifest,
             },
-            "summary": _build_editorial_summary(
-                title=title,
-                cycles_completed=cycles_completed,
-                final_text=current_text,
-            ),
+            "summary": editorial_summary,
             "workflow": workflow,
             "transcript": list(transcript),
             "cycles_completed": cycles_completed,
@@ -1042,6 +1370,7 @@ def _run_editorial_loop(data: dict):
     yield {
         "type": "editorial_start",
         "id": edit_id,
+        "process_id": process_id,
         "title": title,
         "total_cycles": max_cycles,
         "provider": provider,
@@ -1075,11 +1404,7 @@ def _run_editorial_loop(data: dict):
         message=f"Planista: rozpoznałem dokument. {discovery_conclusion}",
         purpose="Określić, czy dokument wymaga kolejnych, ograniczonych odczytów.",
     )
-    yield {
-        "type": "editorial_adaptive_plan",
-        "id": edit_id,
-        "adaptive_plan": adaptive_plan,
-    }
+    yield _adaptive_plan_event(edit_id=edit_id, adaptive_plan=adaptive_plan)
     yield notifier.notify(
         role="Reader",
         phase="document_reading",
@@ -1219,11 +1544,7 @@ def _run_editorial_loop(data: dict):
         message="Planista: wyciągam wnioski z handoffu i ustalam plan redakcji.",
         purpose="Wybrać warstwy wynikające z odczytu, bez planowania kontroli dla formalności.",
     )
-    yield {
-        "type": "editorial_adaptive_plan",
-        "id": edit_id,
-        "adaptive_plan": adaptive_plan,
-    }
+    yield _adaptive_plan_event(edit_id=edit_id, adaptive_plan=adaptive_plan)
     yield notifier.notify(
         role="Reader",
         phase="handoff_synthesis",
@@ -1244,6 +1565,11 @@ def _run_editorial_loop(data: dict):
             ],
             ensure_ascii=False,
         ),
+        (
+            "KRÓTKI DOKUMENT DO INSPEKCJI:\n" + _numbered_editorial_text(current_text)
+            if total_lines <= EDITORIAL_SHORT_DOCUMENT_PLANNER_LINES
+            else ""
+        ),
     ]).strip()
     planner_response = call_role(
         phase="planning",
@@ -1251,19 +1577,17 @@ def _run_editorial_loop(data: dict):
         system_prompt=EDITORIAL_PLANNER_INSTRUCTION,
         messages=[{"role": "user", "content": planner_context}],
     )
-    plan = _normalize_editorial_plan(_parse_json_dict(planner_response))
+    plan = _normalize_editorial_plan(
+        _parse_json_dict(planner_response),
+        total_lines=total_lines,
+    )
+    _ensure_short_document_execution_task(plan, total_lines=total_lines)
     if not any(plan["document_handoff"].values()):
         plan["document_handoff"] = document_handoff
     planning_step["status"] = "completed"
     planning_step["conclusion"] = "Handoff został przekształcony w minimalny plan dalszej redakcji."
-    layers_step = adaptive_steps[3]
-    assert isinstance(layers_step, dict)
-    layers_step["status"] = "completed"
-    layers_step["conclusion"] = (
-        f"Znaleziono {len(plan['layers'])} warstw problemów do zbadania i zweryfikowania; "
-        "uruchamiam dalszy krok redakcji."
-    )
-    adaptive_plan["status"] = "completed"
+    _replace_adaptive_execution_steps(adaptive_plan, plan)
+    adaptive_plan["status"] = "working" if plan["execution_tasks"] else "completed"
     yield notifier.notify(
         role="Reader",
         phase="handoff_synthesis",
@@ -1298,11 +1622,18 @@ def _run_editorial_loop(data: dict):
         message=f"Planista: znalazłem {len(plan['layers'])} warstw problemów do zbadania i zweryfikowania.",
         purpose="Przekazać zatwierdzony zakres dalszym rolom redakcyjnym.",
     )
-    yield {
-        "type": "editorial_adaptive_plan",
-        "id": edit_id,
-        "adaptive_plan": adaptive_plan,
-    }
+    if not plan["execution_tasks"]:
+        yield notifier.notify(
+            role="Planista",
+            phase="task_selection",
+            status="completed",
+            message="Planista: nie wybrałem żadnego poprawnego zadania zakresowego.",
+            purpose=(
+                "Brak execution_tasks oznacza brak ingerencji w dokument. "
+                "Sprawdź w logu odpowiedź Planisty oraz warstwy i handoff."
+            ),
+        )
+    yield _adaptive_plan_event(edit_id=edit_id, adaptive_plan=adaptive_plan)
     yield {
         "type": "editorial_workflow_plan",
         "id": edit_id,
@@ -1334,228 +1665,250 @@ def _run_editorial_loop(data: dict):
     }
 
     cycles_completed = 0
+    document_revision = 0
     try:
         for cycle in range(1, max_cycles + 1):
-            cycle_outputs: dict[str, str] = {}
-            context_block = _build_editorial_context(
-                title=title,
-                brief=brief,
-                original_text=original_text,
-                current_text=current_text,
-                cycle=cycle,
-                clean_model_signatures=clean_model_signatures,
-            )
-
-            for spec in ROLE_SPECS:
-                role_output = call_role(
-                    phase="analysis",
-                    role=spec["key"],
-                    system_prompt=spec["instruction"],
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": _build_role_message(
-                                context_block=context_block,
-                                historical_outputs=historical_outputs,
-                                cycle_outputs=cycle_outputs,
-                            ),
-                        }
-                    ],
-                ).strip()
-                cycle_outputs[spec["key"]] = role_output
-                entry = {
-                    "cycle": cycle,
-                    "role": spec["key"],
-                    "label": spec["label"],
-                    "content": role_output,
-                }
-                transcript.append(entry)
-                historical_outputs.append(entry)
-                _write_debate_snapshot(build_record(cycles_completed=cycles_completed, status="running"))
+            cycle_accepted_patches: list[dict[str, object]] = []
+            cycle_rejected_patches: list[dict[str, object]] = []
+            for task in plan["execution_tasks"]:
+                assert isinstance(task, dict)
+                task["status"] = "working"
+                _update_adaptive_execution_step(
+                    adaptive_plan,
+                    task_id=str(task["id"]),
+                    status="working",
+                    conclusion="Trwa wykonanie wybranego zakresu i warstw redakcyjnych.",
+                )
+                yield _adaptive_plan_event(edit_id=edit_id, adaptive_plan=adaptive_plan)
+                task_text = _task_text(
+                    current_text,
+                    int(task["line_start"]),
+                    int(task["line_end"]),
+                )
+                task_context = _build_task_context(
+                    title=title,
+                    brief=brief,
+                    cycle=cycle,
+                    task=task,
+                    document_handoff=plan["document_handoff"],
+                    text=current_text,
+                    clean_model_signatures=clean_model_signatures,
+                )
+                cycle_outputs: dict[str, str] = {}
+                yield notifier.notify(
+                    role="Orkiestrator",
+                    phase="task_execution",
+                    status="started",
+                    message=f"Orkiestrator: uruchamiam {task['id']} dla L{task['line_start']}-L{task['line_end']}.",
+                    line_start=int(task["line_start"]),
+                    line_end=int(task["line_end"]),
+                    purpose=str(task["purpose"]),
+                )
                 yield {
-                    "type": "editorial_role_output",
-                    "cycle": cycle,
-                    "role": spec["key"],
-                    "label": spec["label"],
-                    "content": role_output,
+                    "type": "editorial_task",
+                    "id": edit_id,
+                    "task": {**task, "artifacts": list(task["artifacts"])},
                 }
 
-            patch_response = call_role(
-                phase="patch_proposal",
-                role="patch_rewriter",
-                system_prompt=PATCH_REWRITER_INSTRUCTION,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": _build_role_message(
-                            context_block=context_block,
+                for spec in _role_specs_for_layers(list(task["layers"])):
+                    role_output = call_role(
+                        phase="analysis",
+                        role=spec["key"],
+                        system_prompt=spec["instruction"],
+                        messages=[{"role": "user", "content": _build_role_message(
+                            context_block=task_context,
                             historical_outputs=historical_outputs,
                             cycle_outputs=cycle_outputs,
-                        ),
+                        )}],
+                    ).strip()
+                    cycle_outputs[spec["key"]] = role_output
+                    entry = {
+                        "cycle": cycle,
+                        "role": spec["key"],
+                        "label": f"{spec['label']} | {task['id']} L{task['line_start']}-L{task['line_end']}",
+                        "content": role_output,
                     }
-                ],
-            )
-            proposed_patches = _build_patchset(_parse_json_object(patch_response, "patches"))
-            proposal_content = json.dumps({"patches": proposed_patches}, ensure_ascii=False, indent=2)
-            proposal_entry = {
-                "cycle": cycle,
-                "role": "patch_rewriter",
-                "label": "Rewriter patchy",
-                "content": proposal_content,
-            }
-            transcript.append(proposal_entry)
-            historical_outputs.append(proposal_entry)
-            _write_debate_snapshot(build_record(cycles_completed=cycles_completed, status="running"))
-            yield {
-                "type": "editorial_role_output",
-                "cycle": cycle,
-                "role": "patch_rewriter",
-                "label": "Rewriter patchy",
-                "content": proposal_content,
-            }
+                    transcript.append(entry)
+                    historical_outputs.append(entry)
+                    yield {"type": "editorial_role_output", **entry}
 
-            validation_response = call_role(
-                phase="patch_validation",
-                role="patch_validator",
-                system_prompt=PATCH_VALIDATOR_INSTRUCTION,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": _build_patch_validation_message(
-                            context_block=context_block,
-                            historical_outputs=historical_outputs,
-                            cycle_outputs=cycle_outputs,
-                            plan=plan,
-                            current_text=current_text,
-                            patches=proposed_patches,
-                        ),
-                    }
-                ],
-            )
-            verdicts = _parse_json_object(validation_response, "verdicts")
-            candidate_text, provisionally_accepted, rejected_patches = _apply_accepted_patches(
-                current_text,
-                proposed_patches,
-                verdicts,
-            )
-            integrity_response = call_role(
-                phase="integrity_verification",
-                role="integrity_verifier",
-                system_prompt=EDITORIAL_INTEGRITY_VERIFIER_INSTRUCTION,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": _build_integrity_verification_message(
-                            plan=plan,
-                            cycle_outputs=cycle_outputs,
-                            before_text=current_text,
-                            candidate_text=candidate_text,
-                            accepted_patches=provisionally_accepted,
-                        ),
-                    }
-                ],
-            )
-            integrity_payload = _parse_json_dict(integrity_response)
-            integrity_verdicts = _parse_json_object(integrity_response, "verdicts")
-            integrity_decisions = {
-                str(verdict.get("id") or ""): str(verdict.get("decision") or "").upper()
-                for verdict in integrity_verdicts
-            }
-            integrity_reasons = {
-                str(verdict.get("id") or ""): str(verdict.get("reason") or "").strip()
-                for verdict in integrity_verdicts
-            }
-            final_verdicts = [
-                {
+                patch_response = call_role(
+                    phase="patch_proposal",
+                    role="patch_rewriter",
+                    system_prompt=PATCH_REWRITER_INSTRUCTION,
+                    messages=[{"role": "user", "content": _build_role_message(
+                        context_block=task_context,
+                        historical_outputs=historical_outputs,
+                        cycle_outputs=cycle_outputs,
+                    )}],
+                )
+                proposed_patches = _patches_in_task(
+                    _scope_patch_ids(
+                        _build_patchset(_parse_json_object(patch_response, "patches")),
+                        str(task["id"]),
+                    ),
+                    current_text=current_text,
+                    task_text=task_text,
+                )
+                proposal_content = json.dumps({"patches": proposed_patches}, ensure_ascii=False, indent=2)
+                proposal_entry = {
+                    "cycle": cycle,
+                    "role": "patch_rewriter",
+                    "label": f"Rewriter patchy | {task['id']} L{task['line_start']}-L{task['line_end']}",
+                    "content": proposal_content,
+                }
+                transcript.append(proposal_entry)
+                historical_outputs.append(proposal_entry)
+                yield {"type": "editorial_role_output", **proposal_entry}
+
+                validation_response = call_role(
+                    phase="patch_validation",
+                    role="patch_validator",
+                    system_prompt=PATCH_VALIDATOR_INSTRUCTION,
+                    messages=[{"role": "user", "content": _build_patch_validation_message(
+                        context_block=task_context,
+                        historical_outputs=historical_outputs,
+                        cycle_outputs=cycle_outputs,
+                        plan=plan,
+                        current_text=current_text,
+                        patches=proposed_patches,
+                    )}],
+                )
+                verdicts = _normalize_patch_decision_ids(
+                    _parse_json_object(validation_response, "verdicts"),
+                    proposed_patches,
+                )
+                candidate_text, provisionally_accepted, rejected_patches = _apply_accepted_patches(
+                    current_text, proposed_patches, verdicts,
+                )
+                integrity_response = call_role(
+                    phase="integrity_verification",
+                    role="integrity_verifier",
+                    system_prompt=EDITORIAL_INTEGRITY_VERIFIER_INSTRUCTION,
+                    messages=[{"role": "user", "content": _build_integrity_verification_message(
+                        plan=plan,
+                        cycle_outputs=cycle_outputs,
+                        before_text=current_text,
+                        candidate_text=candidate_text,
+                        accepted_patches=provisionally_accepted,
+                    )}],
+                )
+                integrity_payload = _parse_json_dict(integrity_response)
+                integrity_verdicts = _normalize_patch_decision_ids(
+                    _parse_json_object(integrity_response, "verdicts"),
+                    provisionally_accepted,
+                )
+                integrity_decisions = {
+                    str(verdict.get("id") or ""): str(verdict.get("decision") or "").upper()
+                    for verdict in integrity_verdicts
+                }
+                integrity_reasons = {
+                    str(verdict.get("id") or ""): str(verdict.get("reason") or "").strip()
+                    for verdict in integrity_verdicts
+                }
+                final_verdicts = [{
                     "id": patch["id"],
                     "decision": "ACCEPT" if integrity_decisions.get(str(patch["id"])) == "KEEP" else "REJECT",
                     "selected_variant_id": patch["selected_variant_id"],
                     "reason": integrity_reasons.get(str(patch["id"]))
                     or "Weryfikator integralności nie potwierdził wystarczającego zysku redakcyjnego.",
-                }
-                for patch in provisionally_accepted
-            ]
-            current_text, accepted_patches, integrity_reverted_patches = _apply_accepted_patches(
-                current_text,
-                provisionally_accepted,
-                final_verdicts,
-            )
-            rejected_patches.extend(integrity_reverted_patches)
-            current_manifest = store_editorial_document(
-                editorial_id=edit_id,
-                version=cycle,
-                text=current_text,
-            )
-            workflow["document_storage"] = {
-                "source": source_manifest,
-                "current": current_manifest,
-            }
-            store_patch_decisions(
-                editorial_id=edit_id,
-                cycle=cycle,
-                accepted=accepted_patches,
-                rejected=rejected_patches,
-            )
-            _append_execution_log(
-                execution_log,
-                "patch_application",
-                status="completed",
-                cycle=cycle,
-                proposed_patches=proposed_patches,
-                verdicts=verdicts,
-                accepted_patches=accepted_patches,
-                rejected_patches=rejected_patches,
-                integrity_assessment=integrity_payload.get("assessment", {}),
-                integrity_verdicts=integrity_verdicts,
-            )
-            validation_content = json.dumps(
-                {
+                } for patch in provisionally_accepted]
+                current_text, accepted_patches, integrity_reverted_patches = _apply_accepted_patches(
+                    current_text, provisionally_accepted, final_verdicts,
+                )
+                rejected_patches.extend(integrity_reverted_patches)
+                cycle_accepted_patches.extend(accepted_patches)
+                cycle_rejected_patches.extend(rejected_patches)
+                document_revision += 1
+                current_manifest = store_editorial_document(
+                    editorial_id=edit_id,
+                    version=document_revision,
+                    text=current_text,
+                )
+                workflow["document_storage"] = {"source": source_manifest, "current": current_manifest}
+                store_patch_decisions(
+                    editorial_id=edit_id,
+                    cycle=cycle,
+                    accepted=accepted_patches,
+                    rejected=rejected_patches,
+                )
+                task["status"] = "done"
+                _update_adaptive_execution_step(
+                    adaptive_plan,
+                    task_id=str(task["id"]),
+                    status="completed",
+                    conclusion=(
+                        f"Zastosowano {len(accepted_patches)} patchy; "
+                        f"odrzucono {len(rejected_patches)} po walidacji i weryfikacji integralności."
+                    ),
+                )
+                task["artifacts"].append({
+                    "cycle": cycle,
+                    "document_version": document_revision,
+                    "proposed_patch_ids": [patch["id"] for patch in proposed_patches],
+                    "accepted_patch_ids": [patch["id"] for patch in accepted_patches],
+                    "rejected_patch_ids": [patch["id"] for patch in rejected_patches],
+                    "integrity_assessment": integrity_payload.get("assessment", {}),
+                })
+                _append_execution_log(
+                    execution_log,
+                    "task_application",
+                    status="completed",
+                    cycle=cycle,
+                    task_id=task["id"],
+                    line_start=task["line_start"],
+                    line_end=task["line_end"],
+                    proposed_patches=proposed_patches,
+                    accepted_patches=accepted_patches,
+                    rejected_patches=rejected_patches,
+                    integrity_assessment=integrity_payload.get("assessment", {}),
+                )
+                validation_content = json.dumps({
+                    "task_id": task["id"],
                     "verdicts": verdicts,
                     "integrity_assessment": integrity_payload.get("assessment", {}),
                     "integrity_verdicts": integrity_verdicts,
                     "accepted": accepted_patches,
                     "rejected": rejected_patches,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            validation_entry = {
-                "cycle": cycle,
-                "role": "patch_validator",
-                "label": "Walidator patchy",
-                "content": validation_content,
-            }
-            transcript.append(validation_entry)
-            historical_outputs.append(validation_entry)
-            integrity_entry = {
-                "cycle": cycle,
-                "role": "integrity_verifier",
-                "label": "Weryfikator integralności redakcji",
-                "content": json.dumps(integrity_payload, ensure_ascii=False, indent=2),
-            }
-            transcript.append(integrity_entry)
-            historical_outputs.append(integrity_entry)
-            _write_debate_snapshot(build_record(cycles_completed=cycles_completed, status="running"))
-            yield {
-                "type": "editorial_role_output",
-                "cycle": cycle,
-                "role": "patch_validator",
-                "label": "Walidator patchy",
-                "content": validation_content,
-            }
-            yield {
-                "type": "editorial_role_output",
-                "cycle": cycle,
-                "role": "integrity_verifier",
-                "label": "Weryfikator integralności redakcji",
-                "content": integrity_entry["content"],
-            }
+                }, ensure_ascii=False, indent=2)
+                validation_entry = {
+                    "cycle": cycle,
+                    "role": "patch_validator",
+                    "label": f"Walidator patchy | {task['id']} L{task['line_start']}-L{task['line_end']}",
+                    "content": validation_content,
+                }
+                integrity_entry = {
+                    "cycle": cycle,
+                    "role": "integrity_verifier",
+                    "label": f"Weryfikator integralności | {task['id']} L{task['line_start']}-L{task['line_end']}",
+                    "content": json.dumps(integrity_payload, ensure_ascii=False, indent=2),
+                }
+                transcript.extend((validation_entry, integrity_entry))
+                historical_outputs.extend((validation_entry, integrity_entry))
+                _write_debate_snapshot(build_record(cycles_completed=cycles_completed, status="running"))
+                yield {"type": "editorial_role_output", **validation_entry}
+                yield {"type": "editorial_role_output", **integrity_entry}
+                yield notifier.notify(
+                    role="Orkiestrator",
+                    phase="task_execution",
+                    status="completed",
+                    message=f"Orkiestrator: zakończyłem {task['id']}.",
+                    line_start=int(task["line_start"]),
+                    line_end=int(task["line_end"]),
+                    purpose="Zapisano partial efekt i mechanicznie złożono aktualną wersję dokumentu.",
+                )
+                yield {
+                    "type": "editorial_task",
+                    "id": edit_id,
+                    "task": {**task, "artifacts": list(task["artifacts"])},
+                }
+                yield _adaptive_plan_event(edit_id=edit_id, adaptive_plan=adaptive_plan)
 
             synthesis_content = json.dumps(
                 {
-                    "accepted_patch_ids": [patch["id"] for patch in accepted_patches],
-                    "rejected_patch_ids": [patch["id"] for patch in rejected_patches],
-                    "method": "deterministyczne zastosowanie zatwierdzonych podmian",
+                    "accepted_patch_ids": [patch["id"] for patch in cycle_accepted_patches],
+                    "rejected_patch_ids": [patch["id"] for patch in cycle_rejected_patches],
+                    "method": "deterministyczne zastosowanie zatwierdzonych podmian z partial efektów zadań",
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -1607,6 +1960,62 @@ def _run_editorial_loop(data: dict):
         status="completed",
         cycles_completed=cycles_completed,
     )
+    adaptive_plan["status"] = "completed"
+    yield _adaptive_plan_event(edit_id=edit_id, adaptive_plan=adaptive_plan)
+    yield notifier.notify(
+        role="Podsumowujący",
+        phase="editorial_summary",
+        status="started",
+        message="Przygotowuję końcowe podsumowanie dla autora.",
+        purpose="Zebrać decyzje redakcyjne bez ponownego analizowania całego dokumentu.",
+    )
+    try:
+        editorial_summary = call_role(
+            phase="editorial_summary",
+            role="editorial_summarizer",
+            system_prompt=EDITORIAL_SUMMARIZER_INSTRUCTION,
+            messages=[{
+                "role": "user",
+                "content": _build_editorial_summary_message(
+                    title=title,
+                    brief=brief,
+                    cycles_completed=cycles_completed,
+                    plan=plan,
+                ),
+            }],
+            max_tokens_override=min(max_tokens, 768),
+        ).strip()
+        if not editorial_summary:
+            raise ValueError("Model nie zwrócił podsumowania redakcyjnego.")
+        summary_entry = {
+            "cycle": cycles_completed,
+            "role": "editorial_summarizer",
+            "label": "Podsumowanie procesu dla autora",
+            "content": editorial_summary,
+        }
+        transcript.append(summary_entry)
+        historical_outputs.append(summary_entry)
+        yield {"type": "editorial_role_output", **summary_entry}
+        yield notifier.notify(
+            role="Podsumowujący",
+            phase="editorial_summary",
+            status="completed",
+            message="Końcowe podsumowanie dla autora jest gotowe.",
+            purpose="Przekazać zwięzły opis faktycznie wykonanej redakcji.",
+        )
+    except Exception as exc:
+        editorial_summary = _build_editorial_summary_fallback(
+            title=title,
+            cycles_completed=cycles_completed,
+            execution_log=execution_log,
+        )
+        yield notifier.notify(
+            role="Podsumowujący",
+            phase="editorial_summary",
+            status="failed",
+            message="Nie udało się przygotować podsumowania przez model; zapisano skrót techniczny.",
+            purpose=str(exc),
+        )
     _write_debate_snapshot(build_record(cycles_completed=cycles_completed, status="completed"))
 
     yield {
@@ -1614,5 +2023,6 @@ def _run_editorial_loop(data: dict):
         "id": edit_id,
         "title": title,
         "final_text": current_text,
+        "summary": editorial_summary,
         "cycles_completed": cycles_completed,
     }

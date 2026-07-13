@@ -72,6 +72,7 @@ def _load_editorials_index() -> list[dict]:
             snippet = (summary[:220] + "…") if len(summary) > 220 else summary
             editorials.append({
                 "id": str(data.get("id") or ""),
+                "process_id": str(data.get("process_id") or ""),
                 "timestamp": str(data.get("timestamp") or ""),
                 "topic": topic,
                 "snippet": snippet,
@@ -83,6 +84,19 @@ def _load_editorials_index() -> list[dict]:
         except Exception:
             pass
     return editorials
+
+
+def _load_editorial_by_process_id(process_id: str) -> dict | None:
+    if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", process_id, re.IGNORECASE):
+        return None
+    for path in DEBATES_DIR.glob("*.json") if DEBATES_DIR.exists() else []:
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if record.get("type") == "edit" and record.get("process_id") == process_id:
+                return record
+        except Exception:
+            continue
+    return None
 
 
 def _load_debate_record(debate_id: str) -> dict | None:

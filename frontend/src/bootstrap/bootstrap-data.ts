@@ -124,6 +124,7 @@ function isDebateListItem(value: unknown): value is DebateListItem {
 
   return (
     typeof value.id === "string" &&
+    typeof value.process_id === "string" &&
     typeof value.timestamp === "string" &&
     typeof value.agent1 === "string" &&
     typeof value.agent2 === "string" &&

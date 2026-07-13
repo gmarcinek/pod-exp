@@ -38,6 +38,7 @@ export type DebatesBootstrapData = {
 
 export type EditorialListItem = {
   id: string;
+  process_id: string;
   timestamp: string;
   topic: string;
   snippet?: string;

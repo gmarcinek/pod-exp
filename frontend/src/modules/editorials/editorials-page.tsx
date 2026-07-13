@@ -43,10 +43,20 @@ export function EditorialsPage({ editorials }: EditorialsPageProps) {
         ) : (
           <div className={styles.list}>
             {editorials.map((editorial) => (
-              <article key={editorial.id} className={styles.card}>
+              <a
+                key={editorial.id}
+                className={styles.card}
+                href={
+                  editorial.process_id
+                    ? buildAppPath(
+                        `/editorial?process=${encodeURIComponent(editorial.process_id)}`,
+                      )
+                    : buildAppPath("/editorial")
+                }
+              >
                 <div className={styles.cardTop}>
                   <span className={styles.badge}>EDITORIAL</span>
-                  <span>{editorial.id}</span>
+                  <span>{editorial.process_id || editorial.id}</span>
                   <div className={styles.meta}>
                     {formatTimestamp(editorial.timestamp)}
                   </div>
@@ -62,7 +72,7 @@ export function EditorialsPage({ editorials }: EditorialsPageProps) {
                   <span>🔌 {editorial.provider || "brak providera"}</span>
                   <span>🔁 {editorial.cycles_completed} iteracji</span>
                 </div>
-              </article>
+              </a>
             ))}
           </div>
         )}

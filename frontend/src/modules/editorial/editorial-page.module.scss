@@ -9,7 +9,7 @@
 }
 
 .shell {
-  max-width: 1660px;
+  width: 100%;
   margin: 0 auto;
   display: grid;
   gap: 24px;
@@ -43,8 +43,12 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 2.4fr);
   gap: 24px;
+}
+
+.layoutWorkspaceOnly {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .panel {
@@ -166,12 +170,65 @@
   gap: 10px;
 }
 
+.processActivity,
+.stopButton {
+  min-height: 38px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.processActivity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(244, 241, 232, 0.16);
+  color: rgba(244, 241, 232, 0.68);
+}
+
+.processActivityRunning {
+  border-color: rgba(127, 169, 214, 0.7);
+  background: rgba(127, 169, 214, 0.12);
+  color: #9dc6f0;
+}
+
+.processIndicator {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.processActivityRunning .processIndicator {
+  animation: pendingPulse 1.1s ease-in-out infinite;
+}
+
+.stopButton {
+  border: 1px solid rgba(255, 171, 171, 0.72);
+  background: rgba(232, 120, 120, 0.12);
+  color: #ffabab;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.stopButton:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .statusPill {
   border-radius: 999px;
   padding: 8px 12px;
   background: rgba(244, 241, 232, 0.06);
   color: rgba(244, 241, 232, 0.8);
   font-size: 13px;
+  align-content: center;
+}
+
+a.statusPill {
+  color: #9dc6f0;
+  text-decoration: none;
 }
 
 .entries {
@@ -183,6 +240,93 @@
   display: grid;
   gap: 18px;
   padding: 4px 0;
+}
+
+.editorialPanels {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  align-items: start;
+  gap: 24px;
+  min-width: 0;
+}
+
+.toolLogPanel {
+  position: sticky;
+  top: 20px;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 40px);
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid rgba(127, 169, 214, 0.34);
+  border-radius: 8px;
+  background: rgba(33, 56, 80, 0.28);
+}
+
+.toolLogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toolLogHeader small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(157, 198, 240, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.toolLogCount {
+  min-width: 26px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: rgba(127, 169, 214, 0.18);
+  color: #9dc6f0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.toolLogMessage {
+  margin: 0;
+  color: #9dc6f0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.toolLogOperator {
+  display: inline-flex;
+  gap: 4px;
+  color: rgba(244, 241, 232, 0.88);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.toolLogOperator svg {
+  flex: 0 0 auto;
+  color: #d2b36a;
+}
+
+.emptyToolLog,
+.emptyExecutionTasks,
+.emptyPatchList {
+  margin: 0;
+  color: rgba(157, 198, 240, 0.78);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.emptyExecutionTasks {
+  padding: 10px 12px;
+  border-left: 2px solid #9dc6f0;
+  background: rgba(127, 169, 214, 0.08);
+}
+
+.emptyPatchList {
+  padding: 10px 12px;
+  border-left: 2px solid rgba(244, 241, 232, 0.4);
+  background: rgba(244, 241, 232, 0.04);
 }
 
 .boardHeader,
@@ -201,6 +345,27 @@
 .workflowGroup {
   display: grid;
   gap: 8px;
+}
+
+.workflowGroup + .workflowGroup {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(244, 241, 232, 0.12);
+}
+
+.layerGroup {
+  gap: 14px;
+}
+
+.layerGroup .workflowList {
+  gap: 10px;
+  border-top: 0;
+}
+
+.layerGroup .workflowItem {
+  padding: 14px 12px;
+  border: 1px solid rgba(244, 241, 232, 0.1);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .workflowGroup h2 {
@@ -320,26 +485,37 @@
 }
 
 .toolStatusList {
-  color: rgba(244, 241, 232, 0.46);
-  font-size: 11px;
+  display: grid;
+  gap: 0;
+  margin: 0 0 0 18px;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  color: #9dc6f0;
+  font-size: 12px;
+  list-style: decimal;
 }
 
 .toolStatusList li {
+  min-width: 0;
   padding: 6px 0;
+  border-bottom: 1px solid rgba(127, 169, 214, 0.2);
 }
 
-.toolStatusList strong {
-  color: rgba(244, 241, 232, 0.56);
-  font-size: 11px;
-  font-weight: 500;
+.toolLogMessage {
+  min-width: 0;
 }
 
-.toolStatusList small {
-  display: block;
-  margin-top: 2px;
-  color: rgba(244, 241, 232, 0.36);
-  font-size: 10px;
+.toolLogMessage {
+  margin: 0;
+  color: #9dc6f0;
+  font-size: 12px;
   line-height: 1.35;
+}
+
+.toolStatusList time {
+  color: rgba(157, 198, 240, 0.5);
+  flex: 0 0 auto;
+  font-size: 12px;
 }
 
 .entry {
@@ -384,9 +560,7 @@
 }
 
 .resultActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 12px;
   padding: 10px 0;
   border-top: 1px solid rgba(244, 241, 232, 0.08);
@@ -395,6 +569,20 @@
 
 .resultActions .exportActions {
   margin-top: 0;
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resultSummary {
+  margin: 0;
+  max-width: 920px;
+  color: rgba(244, 241, 232, 0.76);
+  line-height: 1.55;
 }
 
 .error {
@@ -420,6 +608,15 @@
   .boardHeader,
   .workflowItem {
     gap: 10px;
+  }
+
+  .editorialPanels {
+    grid-template-columns: 1fr;
+  }
+
+  .toolLogPanel {
+    position: static;
+    max-height: 420px;
   }
 }
 
